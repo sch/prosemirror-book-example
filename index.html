@@ -1,149 +1,213 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ProseMirror Scoped View</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ProseMirror Scoped View</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
 
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      display: flex;
-      height: 100vh;
-    }
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        display: flex;
+        height: 100vh;
+      }
 
-    #toc {
-      width: 260px;
-      flex-shrink: 0;
-      border-right: 1px solid #ccc;
-      padding: 16px;
-      overflow-y: auto;
-      background: #f8f8f8;
-    }
+      #toc {
+        width: 260px;
+        flex-shrink: 0;
+        border-right: 1px solid #ccc;
+        padding: 16px;
+        overflow-y: auto;
+        background: #f8f8f8;
+      }
 
-    #toc h2 {
-      font-size: 14px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: #666;
-      margin-bottom: 12px;
-    }
+      #toc h2 {
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #666;
+        margin-bottom: 12px;
+      }
 
-    #toc .ProseMirror {
-      border: none;
-      border-radius: 0;
-      padding: 0;
-      min-height: auto;
-    }
+      #toc .ProseMirror {
+        border: none;
+        border-radius: 0;
+        padding: 0;
+        min-height: auto;
+      }
 
-    #toc .ProseMirror h1 {
-      font-size: 14px;
-      font-weight: normal;
-      padding: 8px 12px;
-      border-radius: 4px;
-      cursor: text;
-      margin-bottom: 4px;
-      line-height: 1.4;
-    }
+      #toc .ProseMirror h1 {
+        font-size: 14px;
+        font-weight: normal;
+        padding: 8px 12px;
+        border-radius: 4px;
+        cursor: text;
+        margin-bottom: 4px;
+        line-height: 1.4;
+      }
 
-    #toc .ProseMirror h1:hover { background: #e8e8e8; }
-    #toc .ProseMirror h1.active { background: #d0e0ff; font-weight: 600; }
-    #toc .ProseMirror h1.active:hover { background: #d0e0ff; }
+      #toc .ProseMirror h1:hover {
+        background: #e8e8e8;
+      }
+      #toc .ProseMirror h1.active {
+        background: #d0e0ff;
+        font-weight: 600;
+      }
+      #toc .ProseMirror h1.active:hover {
+        background: #d0e0ff;
+      }
 
-    #editor-wrapper {
-      flex-grow: 1;
-      flex-shrink: 1;
-      padding: 24px;
-      overflow-y: auto;
-    }
+      #editor-wrapper {
+        flex-grow: 1;
+        flex-shrink: 1;
+        padding: 24px;
+        overflow-y: auto;
+      }
 
-    #editor {
-      max-width: 700px;
-      margin: 0 auto;
-    }
+      #editor {
+        max-width: 700px;
+        margin: 0 auto;
+      }
 
-    .ProseMirror {
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      padding: 16px 20px;
-      min-height: 300px;
-      outline: none;
-    }
+      .ProseMirror {
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 16px 20px;
+        min-height: 300px;
+        outline: none;
+      }
 
-    .ProseMirror section {
-      /* chapter node renders as <section> */
-    }
+      .ProseMirror section {
+        /* chapter node renders as <section> */
+      }
 
-    .ProseMirror h1 {
-      font-size: 1.6em;
-      margin-bottom: 0.5em;
-    }
+      .ProseMirror h1 {
+        font-size: 1.6em;
+        margin-bottom: 0.5em;
+      }
 
-    .ProseMirror p {
-      margin-bottom: 0.75em;
-      line-height: 1.6;
-    }
+      .ProseMirror p {
+        margin-bottom: 0.75em;
+        line-height: 1.6;
+      }
 
-    .ProseMirror code {
-      font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
-      font-size: 0.9em;
-      background: #f0f0f0;
-      padding: 0.15em 0.35em;
-      border-radius: 3px;
-    }
+      .ProseMirror code {
+        font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+        font-size: 0.9em;
+        background: #f0f0f0;
+        padding: 0.15em 0.35em;
+        border-radius: 3px;
+      }
 
-    .ProseMirror pre {
-      background: #f5f5f5;
-      border-radius: 4px;
-      padding: 12px 16px;
-      margin-bottom: 0.75em;
-      overflow-x: auto;
-    }
+      .ProseMirror pre {
+        background: #f5f5f5;
+        border-radius: 4px;
+        padding: 12px 16px;
+        margin-bottom: 0.75em;
+        overflow-x: auto;
+      }
 
-    .ProseMirror pre code {
-      background: none;
-      padding: 0;
-      font-size: 0.85em;
-      line-height: 1.5;
-    }
-  </style>
-</head>
-<body>
-  <div id="toc">
-    <h2>Table of Contents</h2>
-    <div id="toc-editor"></div>
-  </div>
-  <div id="editor-wrapper">
-    <div id="editor">
-      <section>
-        <h1>Scoped Views</h1>
-        <p>This example demonstrates how to render and edit a subset of a ProseMirror document. A single authoritative <code>EditorState</code> holds a full book, but two separate <code>EditorView</code>s each show a different projection of it: the main panel renders one chapter at a time, and the sidebar shows an editable table of contents — a flat list of chapter headings.</p>
-        <p>Edits in either view are remapped into full-document coordinates and applied to the shared state, keeping everything in sync. The approach generalizes to any situation where you want users to focus on one part of a larger document without losing the rest.</p>
-      </section>
-      <section>
-        <h1>The Dispatch Bridge</h1>
-        <p>Each scoped view has a custom <code>dispatchTransaction</code> that intercepts every transaction. It applies the transaction locally for instant feedback, then remaps each step into full-document coordinates and applies it to the authoritative state.</p>
-        <p>For the chapter view, this is a single uniform offset: every position inside the chapter differs from the full-doc position by exactly <code>chapterStart(doc, i)</code>. <code>StepMap.offset(n)</code> shifts all positions by <code>n</code>, so <code>step.map(StepMap.offset(n))</code> converts from scoped to full coordinates.</p>
-        <p>For the TOC view, the mapping is per-heading. Each heading lives at a different position in the full document, so the bridge resolves which heading a step falls in, computes that heading's specific offset, and remaps with it. The offset is stable across multi-step transactions because insertions shift both documents equally.</p>
-      </section>
-      <section>
-        <h1>Position Math</h1>
-        <p><code>doc.forEach((child, offset, index) =&gt; ...)</code> gives offsets relative to the parent's content. For the top-level doc node, these content-relative offsets ARE absolute positions — position 0 is the start of the document's content.</p>
-        <p>In the full document, a chapter's heading starts at <code>chapterStart(doc, i) + 1</code>. The <code>+1</code> enters the chapter node to reach its first child. In the TOC document, <code>heading[i]</code> starts at the sum of all preceding headings' <code>nodeSize</code>s. The offset between these two positions is all <code>StepMap.offset</code> needs.</p>
-        <p>The full offset calculation:</p>
-        <pre>const fullPos = chapterStart(fullDoc, hIndex) + 1
-const tocPos = tocHeadingPos(oldDoc, hIndex)
-const offset = fullPos - tocPos</pre>
-      </section>
-      <section>
-        <h1>Syncing Between Views</h1>
-        <p>Edits flow in both directions. When you type in the chapter view, the dispatch bridge updates the full state, then <code>syncTOC()</code> checks whether any heading's text changed. Since nodes are immutable, this is a cheap identity comparison — if the heading node is the same object, its content hasn't changed.</p>
-        <p>When you type in the TOC, the dispatch bridge updates the full state in the same way, then rebuilds the chapter view from the updated state via <code>resyncScopedView()</code>. This loses the chapter view's undo history, but keeps the document consistent.</p>
-        <p>Chapter switching is driven by cursor position in the TOC. When the TOC's selection moves to a different heading, the bridge calls <code>setActiveIndex()</code> and rebuilds the scoped view.</p>
-      </section>
+      .ProseMirror pre code {
+        background: none;
+        padding: 0;
+        font-size: 0.85em;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="toc">
+      <h2>Table of Contents</h2>
+      <div id="toc-editor"></div>
     </div>
-  </div>
-  <script type="module" src="/src/main.ts"></script>
-</body>
+    <div id="editor-wrapper">
+      <div id="editor">
+        <section>
+          <h1>Scoped Views</h1>
+          <p>
+            This example demonstrates how to render and edit a subset of a ProseMirror document. A
+            single authoritative <code>EditorState</code> holds a full book, but two separate
+            <code>EditorView</code>s each show a different projection of it: the main panel renders
+            one chapter at a time, and the sidebar shows an editable table of contents — a flat list
+            of chapter headings.
+          </p>
+          <p>
+            Edits in either view are remapped into full-document coordinates and applied to the
+            shared state, keeping everything in sync. The approach generalizes to any situation
+            where you want users to focus on one part of a larger document without losing the rest.
+          </p>
+        </section>
+        <section>
+          <h1>The Dispatch Bridge</h1>
+          <p>
+            Each scoped view has a custom <code>dispatchTransaction</code> that intercepts every
+            transaction. It applies the transaction locally for instant feedback, then remaps each
+            step into full-document coordinates and applies it to the authoritative state.
+          </p>
+          <p>
+            For the chapter view, this is a single uniform offset: every position inside the chapter
+            differs from the full-doc position by exactly <code>chapterStart(doc, i)</code>.
+            <code>StepMap.offset(n)</code> shifts all positions by <code>n</code>, so
+            <code>step.map(StepMap.offset(n))</code> converts from scoped to full coordinates.
+          </p>
+          <p>
+            For the TOC view, the mapping is per-heading. Each heading lives at a different position
+            in the full document, so the bridge resolves which heading a step falls in, computes
+            that heading's specific offset, and remaps with it. The offset is stable across
+            multi-step transactions because insertions shift both documents equally.
+          </p>
+        </section>
+        <section>
+          <h1>Position Math</h1>
+          <p>
+            <code>doc.forEach((child, offset, index) =&gt; ...)</code> gives offsets relative to the
+            parent's content. For the top-level doc node, these content-relative offsets ARE
+            absolute positions — position 0 is the start of the document's content.
+          </p>
+          <p>
+            In the full document, a chapter's heading starts at
+            <code>chapterStart(doc, i) + 1</code>. The <code>+1</code> enters the chapter node to
+            reach its first child. In the TOC document, <code>heading[i]</code> starts at the sum of
+            all preceding headings' <code>nodeSize</code>s. The offset between these two positions
+            is all <code>StepMap.offset</code> needs.
+          </p>
+          <p>The full offset calculation:</p>
+          <pre>
+const fullPos = chapterStart(fullDoc, hIndex) + 1
+const tocPos = tocHeadingPos(oldDoc, hIndex)
+const offset = fullPos - tocPos</pre
+          >
+        </section>
+        <section>
+          <h1>Syncing Between Views</h1>
+          <p>
+            Edits flow in both directions. When you type in the chapter view, the dispatch bridge
+            updates the full state, then <code>syncTOC()</code> checks whether any heading's text
+            changed. Since nodes are immutable, this is a cheap identity comparison — if the heading
+            node is the same object, its content hasn't changed.
+          </p>
+          <p>
+            When you type in the TOC, the dispatch bridge updates the full state in the same way,
+            then rebuilds the chapter view from the updated state via
+            <code>resyncScopedView()</code>. This loses the chapter view's undo history, but keeps
+            the document consistent.
+          </p>
+          <p>
+            Chapter switching is driven by cursor position in the TOC. When the TOC's selection
+            moves to a different heading, the bridge calls <code>setActiveIndex()</code> and
+            rebuilds the scoped view.
+          </p>
+        </section>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>

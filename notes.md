@@ -27,11 +27,15 @@ static compile(nodes, schema) {
 So even if two schemas share the exact same `NodeSpec` objects:
 
 ```ts
-const schemaA = new Schema({ nodes: { doc: { content: "heading+" }, heading: headingSpec, text: textSpec } })
-const schemaB = new Schema({ nodes: { doc: { content: "chapter+" }, heading: headingSpec, text: textSpec } })
+const schemaA = new Schema({
+  nodes: { doc: { content: "heading+" }, heading: headingSpec, text: textSpec },
+});
+const schemaB = new Schema({
+  nodes: { doc: { content: "chapter+" }, heading: headingSpec, text: textSpec },
+});
 
-schemaA.nodes.heading === schemaB.nodes.heading  // false
-schemaA.nodes.text === schemaB.nodes.text        // false
+schemaA.nodes.heading === schemaB.nodes.heading; // false
+schemaA.nodes.text === schemaB.nodes.text; // false
 ```
 
 ### How it manifests
@@ -61,14 +65,14 @@ to the same schema:
 ```ts
 export const bookSchema = new Schema({
   nodes: {
-    doc:     { content: "chapter+" },   // full book and scoped chapter view
-    toc_doc: { content: "heading+" },   // table of contents view
+    doc: { content: "chapter+" }, // full book and scoped chapter view
+    toc_doc: { content: "heading+" }, // table of contents view
     chapter: chapterSpec,
     heading: headingSpec,
     paragraph: paragraphSpec,
     text: textSpec,
   },
-})
+});
 ```
 
 The scoped view uses the normal `doc` type (one chapter satisfies
