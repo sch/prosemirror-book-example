@@ -16,8 +16,12 @@
           system-ui,
           -apple-system,
           sans-serif;
-        display: flex;
         height: 100vh;
+      }
+
+      #book-layout {
+        display: flex;
+        height: 100%;
       }
 
       #toc {
@@ -72,7 +76,7 @@
         overflow-y: auto;
       }
 
-      #editor {
+      #editor-wrapper > div {
         max-width: 700px;
         margin: 0 auto;
       }
@@ -124,13 +128,8 @@
     </style>
   </head>
   <body>
-    <div id="toc">
-      <h2>Table of Contents</h2>
-      <div id="toc-editor"></div>
-    </div>
-    <div id="editor-wrapper">
-      <div id="editor">
-        <section>
+    <div id="editor">
+      <section>
           <h1>Scoped Views</h1>
           <p>
             This example demonstrates how to render and edit a subset of a ProseMirror document. A
@@ -206,7 +205,6 @@ const offset = fullPos - tocPos</pre
             rebuilds the scoped view.
           </p>
         </section>
-      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
