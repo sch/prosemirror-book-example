@@ -1,4 +1,4 @@
-import { Node } from "prosemirror-model";
+import { DOMSerializer, Node } from "prosemirror-model";
 import {
   EditorState,
   Plugin,
@@ -37,6 +37,8 @@ function buildScopedState(fullChapter: Node): EditorState {
   });
 }
 
+const renderSpec = DOMSerializer.renderSpec.bind(null, document);
+
 // ── Chapter plugin ────────────────────────────────────────────────
 // Owns the active chapter index as plugin state, and manages the
 // scoped chapter EditorView. The scoped view renders a single
@@ -62,12 +64,12 @@ export function chapterPlugin(): Plugin<number> {
       // this plugin is active.
       const mount = bookView.dom.parentNode! as HTMLElement;
 
-      const editorWrapper = document.createElement("div");
-      editorWrapper.id = "editor-wrapper";
+      const { dom: editorWrapper, contentDOM } = renderSpec([
+        "div",
+        { id: "editor-wrapper" },
+        ["div", 0],
+      ]);
       mount.appendChild(editorWrapper);
-
-      const editorContainer = document.createElement("div");
-      editorWrapper.appendChild(editorContainer);
 
       bookView.dom.style.display = "none";
 
@@ -78,8 +80,7 @@ export function chapterPlugin(): Plugin<number> {
       // the cursor after rebuilding the scoped state.
       let pendingSelection: Selection | null = null;
 
-      let scopedView!: EditorView;
-      scopedView = new EditorView(editorContainer, {
+      const scopedView = new EditorView(contentDOM!, {
         state: buildScopedState(chapter),
         dispatchTransaction(tr: Transaction) {
           if (!tr.docChanged) {
@@ -140,7 +141,7 @@ export function chapterPlugin(): Plugin<number> {
         },
         destroy() {
           scopedView.destroy();
-          editorWrapper.remove();
+          (editorWrapper as HTMLElement).remove();
           bookView.dom.style.display = "";
         },
       };

@@ -1,4 +1,4 @@
-import { Node } from "prosemirror-model";
+import { DOMSerializer, Node } from "prosemirror-model";
 import {
   EditorState,
   Plugin,
@@ -48,34 +48,35 @@ function tocHeadingPos(tocDoc: Node, index: number): number {
 
 export const tableOfContentsKey = new PluginKey("tableOfContents");
 
+const renderSpec = DOMSerializer.renderSpec.bind(null, document);
+
 export function tableOfContentsPlugin(): Plugin {
   return new Plugin({
     key: tableOfContentsKey,
     view(bookView) {
-      // Insert the sidebar before the editor mount. CSS grid on
-      // body uses :has(#toc) to switch to a two-column layout.
+      // Insert the sidebar before the editor mount
       const mount = bookView.dom.parentNode! as HTMLElement;
 
-      const sidebar = document.createElement("div");
-      sidebar.id = "toc";
+      const { dom: sidebar, contentDOM } = renderSpec([
+        "div",
+        { id: "toc" },
+        ["h2", "Table of Contents"],
+        ["div", 0],
+      ]);
       mount.parentNode!.insertBefore(sidebar, mount);
-
-      const heading = document.createElement("h2");
-      heading.textContent = "Table of Contents";
-      sidebar.appendChild(heading);
 
       function highlightActive(): void {
         const active = chapterKey.getState(bookView.state) ?? 0;
         const headings = tocView.dom.querySelectorAll("h1");
-        headings.forEach(function (h, i) {
-          h.classList.toggle("active", i === active);
+        headings.forEach(function (heading, i) {
+          heading.classList.toggle("active", i === active);
         });
       }
 
       let pendingSelection: Selection | null = null;
 
       let tocView!: EditorView;
-      tocView = new EditorView(sidebar, {
+      tocView = new EditorView(contentDOM!, {
         state: buildTocState(bookView.state.doc),
         dispatchTransaction(tr: Transaction) {
           if (!tr.docChanged) {
@@ -155,7 +156,7 @@ export function tableOfContentsPlugin(): Plugin {
         },
         destroy() {
           tocView.destroy();
-          sidebar.remove();
+          (sidebar as HTMLElement).remove();
         },
       };
     },
