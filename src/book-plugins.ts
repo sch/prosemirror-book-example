@@ -1,17 +1,9 @@
 import { Node } from "prosemirror-model";
-import {
-  EditorState,
-  Plugin,
-  PluginKey,
-  Selection,
-  TextSelection,
-  Transaction,
-} from "prosemirror-state";
+import { EditorState, Plugin, PluginKey, Selection, TextSelection, Transaction } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { StepMap } from "prosemirror-transform";
 import { keymap } from "prosemirror-keymap";
 import { baseKeymap } from "prosemirror-commands";
-import { undo, redo } from "prosemirror-history";
 import { bookSchema } from "./schema";
 
 // ── Shared helpers ────────────────────────────────────────────────
@@ -29,17 +21,10 @@ function buildScopedDoc(fullChapter: Node): Node {
   return bookSchema.node("doc", null, fullChapter);
 }
 
-function buildScopedState(fullChapter: Node, bookView: EditorView): EditorState {
+function buildScopedState(fullChapter: Node): EditorState {
   return EditorState.create({
     doc: buildScopedDoc(fullChapter),
-    plugins: [
-      keymap({
-        "Mod-z": () => undo(bookView.state, bookView.dispatch),
-        "Mod-y": () => redo(bookView.state, bookView.dispatch),
-        "Mod-Shift-z": () => redo(bookView.state, bookView.dispatch),
-      }),
-      keymap(baseKeymap),
-    ],
+    plugins: [keymap(baseKeymap)],
   });
 }
 
@@ -52,18 +37,10 @@ function buildTocDoc(fullDoc: Node): Node {
   return bookSchema.nodes.toc_doc.create(null, headings);
 }
 
-function buildTocState(fullDoc: Node, bookView: EditorView): EditorState {
+function buildTocState(fullDoc: Node): EditorState {
   return EditorState.create({
     doc: buildTocDoc(fullDoc),
-    plugins: [
-      keymap({
-        "Mod-z": () => undo(bookView.state, bookView.dispatch),
-        "Mod-y": () => redo(bookView.state, bookView.dispatch),
-        "Mod-Shift-z": () => redo(bookView.state, bookView.dispatch),
-      }),
-      keymap({ Enter: () => true }),
-      keymap(baseKeymap),
-    ],
+    plugins: [keymap({ Enter: () => true }), keymap(baseKeymap)],
   });
 }
 
@@ -118,30 +95,21 @@ export function chapterPlugin(): Plugin<number> {
       const activeIndex = chapterKey.getState(bookView.state)!;
       const chapter = bookView.state.doc.child(activeIndex);
 
-      // The selection the scoped view should have after the next
-      // state rebuild. Set by dispatchTransaction when it bridges a
-      // doc change to the book view.
+      // Stashed from dispatchTransaction so update() can restore
+      // the cursor after rebuilding the scoped state.
       let pendingSelection: Selection | null = null;
 
       let scopedView!: EditorView;
       scopedView = new EditorView(editorContainer, {
-        state: buildScopedState(chapter, bookView),
+        state: buildScopedState(chapter),
         dispatchTransaction(tr: Transaction) {
-          // If the document didn't change, apply locally (e.g. selection
-          // changes) and stop — nothing to bridge.
           if (!tr.docChanged) {
             scopedView.updateState(scopedView.state.apply(tr));
             return;
           }
 
-          // Stash the post-edit selection so update() can restore it
-          // after rebuilding the scoped state.
           pendingSelection = tr.selection;
 
-          // Remap each step from scoped to full-doc coordinates and
-          // apply directly to the book state. The book state is the
-          // source of truth; the scoped view will be updated in the
-          // plugin update() callback below.
           const idx = chapterKey.getState(bookView.state)!;
           const offset = chapterStart(bookView.state.doc, idx);
 
@@ -236,9 +204,8 @@ export function tocPlugin(): Plugin {
 
       let tocView!: EditorView;
       tocView = new EditorView(sidebar, {
-        state: buildTocState(bookView.state.doc, bookView),
+        state: buildTocState(bookView.state.doc),
         dispatchTransaction(tr: Transaction) {
-          // Selection-only changes: apply locally, update active chapter.
           if (!tr.docChanged) {
             tocView.updateState(tocView.state.apply(tr));
 
@@ -255,8 +222,6 @@ export function tocPlugin(): Plugin {
             return;
           }
 
-          // Doc change: stash the selection, remap steps to full-doc
-          // coordinates, and dispatch to the book view.
           pendingSelection = tr.selection;
 
           const oldDoc = tocView.state.doc;

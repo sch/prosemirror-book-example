@@ -2,7 +2,6 @@ import "prosemirror-view/style/prosemirror.css";
 import { DOMParser } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
-import { history } from "prosemirror-history";
 import { bookSchema } from "./schema";
 import { chapterPlugin, tocPlugin } from "./book-plugins";
 
@@ -16,6 +15,6 @@ editorEl.textContent = "";
 new EditorView(editorEl, {
   state: EditorState.create({
     doc,
-    plugins: [history(), chapterPlugin(), tocPlugin()],
+    plugins: [chapterPlugin(), tocPlugin()],
   }),
 });

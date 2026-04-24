@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "prosemirror-commands": "^1.6.0",
-    "prosemirror-history": "^1.4.0",
     "prosemirror-keymap": "^1.2.0",
     "prosemirror-model": "^1.24.0",
     "prosemirror-state": "^1.4.0",
