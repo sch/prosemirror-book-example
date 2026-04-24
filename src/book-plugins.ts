@@ -1,10 +1,17 @@
 import { Node } from "prosemirror-model";
-import { EditorState, Plugin, PluginKey, Selection, TextSelection, Transaction } from "prosemirror-state";
+import {
+  EditorState,
+  Plugin,
+  PluginKey,
+  Selection,
+  TextSelection,
+  Transaction,
+} from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { StepMap } from "prosemirror-transform";
 import { keymap } from "prosemirror-keymap";
 import { baseKeymap } from "prosemirror-commands";
-import { history, undo, redo } from "prosemirror-history";
+import { undo, redo } from "prosemirror-history";
 import { bookSchema } from "./schema";
 
 // ── Shared helpers ────────────────────────────────────────────────
@@ -45,12 +52,15 @@ function buildTocDoc(fullDoc: Node): Node {
   return bookSchema.nodes.toc_doc.create(null, headings);
 }
 
-function buildTocState(fullDoc: Node): EditorState {
+function buildTocState(fullDoc: Node, bookView: EditorView): EditorState {
   return EditorState.create({
     doc: buildTocDoc(fullDoc),
     plugins: [
-      history(),
-      keymap({ "Mod-z": undo, "Mod-y": redo, "Mod-Shift-z": redo }),
+      keymap({
+        "Mod-z": () => undo(bookView.state, bookView.dispatch),
+        "Mod-y": () => redo(bookView.state, bookView.dispatch),
+        "Mod-Shift-z": () => redo(bookView.state, bookView.dispatch),
+      }),
       keymap({ Enter: () => true }),
       keymap(baseKeymap),
     ],
@@ -167,11 +177,7 @@ export function chapterPlugin(): Plugin<number> {
 
           let selection: Selection;
           if (pendingSelection) {
-            selection = TextSelection.create(
-              doc,
-              pendingSelection.anchor,
-              pendingSelection.head,
-            );
+            selection = TextSelection.create(doc, pendingSelection.anchor, pendingSelection.head);
             pendingSelection = null;
           } else {
             selection = Selection.atStart(doc);
@@ -204,8 +210,6 @@ export function chapterPlugin(): Plugin<number> {
 export function tocPlugin(): Plugin {
   return new Plugin({
     view(bookView) {
-      let skipNextUpdate = false;
-
       // Build the sidebar DOM — the plugin owns this entirely.
       const sidebar = document.createElement("div");
       sidebar.id = "toc";
@@ -228,37 +232,35 @@ export function tocPlugin(): Plugin {
         });
       }
 
+      let pendingSelection: Selection | null = null;
+
       let tocView!: EditorView;
       tocView = new EditorView(sidebar, {
-        state: buildTocState(bookView.state.doc),
+        state: buildTocState(bookView.state.doc, bookView),
         dispatchTransaction(tr: Transaction) {
-          const oldDoc = tocView.state.doc;
-          tocView.updateState(tocView.state.apply(tr));
-
-          // If the cursor moved to a different heading, switch chapter.
-          const $head = tocView.state.selection.$head;
-          if ($head.depth > 0) {
-            const headingIndex = $head.index(0);
-            const currentIndex = chapterKey.getState(bookView.state)!;
-            if (headingIndex !== currentIndex) {
-              console.log(
-                `[toc-bridge] active chapter: ${currentIndex} → ${headingIndex}`,
-              );
-              bookView.dispatch(
-                bookView.state.tr.setMeta(chapterKey, headingIndex),
-              );
-            }
-          }
-
+          // Selection-only changes: apply locally, update active chapter.
           if (!tr.docChanged) {
+            tocView.updateState(tocView.state.apply(tr));
+
+            const $head = tocView.state.selection.$head;
+            if ($head.depth > 0) {
+              const headingIndex = $head.index(0);
+              const currentIndex = chapterKey.getState(bookView.state)!;
+              if (headingIndex !== currentIndex) {
+                bookView.dispatch(bookView.state.tr.setMeta(chapterKey, headingIndex));
+              }
+            }
+
             highlightActive();
             return;
           }
 
-          // Remap each step into full-doc coordinates.
-          const fullDoc = bookView.state.doc;
+          // Doc change: stash the selection, remap steps to full-doc
+          // coordinates, and dispatch to the book view.
+          pendingSelection = tr.selection;
+
+          const oldDoc = tocView.state.doc;
           const fullTr = bookView.state.tr;
-          fullTr.setMeta("tocOrigin", true);
 
           for (const step of tr.steps) {
             const stepJson = step.toJSON();
@@ -266,69 +268,51 @@ export function tocPlugin(): Plugin {
             const $from = oldDoc.resolve(from);
             const hIndex = $from.depth > 0 ? $from.index(0) : 0;
 
-            const fullPos = chapterStart(fullDoc, hIndex) + 1;
+            const fullPos = chapterStart(bookView.state.doc, hIndex) + 1;
             const tocPos = tocHeadingPos(oldDoc, hIndex);
             const offset = fullPos - tocPos;
 
-            console.log(
-              `[toc-bridge] heading=${hIndex}, tocPos=${tocPos}, fullPos=${fullPos}, offset=${offset}`,
-            );
-
             const mapped = step.map(StepMap.offset(offset));
             if (mapped) {
-              const mappedJson = mapped.toJSON();
-              console.log(
-                `[toc-bridge]   ${stepJson.stepType} ` +
-                  `toc=${stepJson.from}→${stepJson.to} ` +
-                  `full=${mappedJson.from}→${mappedJson.to}`,
-              );
               const result = fullTr.maybeStep(mapped);
               if (result.failed) {
-                console.warn("[toc-bridge]   step failed:", result.failed);
+                console.warn("[toc-bridge] step failed:", result.failed);
               }
             }
           }
 
           if (fullTr.docChanged) {
-            skipNextUpdate = true;
             bookView.dispatch(fullTr);
-            console.log(
-              `[toc-bridge] fullState updated, doc size=${bookView.state.doc.content.size}`,
-            );
           }
-
-          highlightActive();
         },
       });
 
       highlightActive();
 
       return {
-        update(bookView, _prevState) {
-          if (skipNextUpdate) {
-            skipNextUpdate = false;
+        update(bookView, prevState) {
+          if (bookView.state.doc === prevState.doc) {
             highlightActive();
             return;
           }
 
-          const fullDoc = bookView.state.doc;
-          const tocDoc = tocView.state.doc;
+          const doc = buildTocDoc(bookView.state.doc);
 
-          let changed = tocDoc.childCount !== fullDoc.childCount;
-          if (!changed) {
-            fullDoc.forEach(function (chapter, _offset, index) {
-              if (changed) return;
-              const fullHeading = chapter.firstChild!;
-              const tocHeading = tocDoc.child(index);
-              if (fullHeading !== tocHeading) {
-                changed = true;
-              }
-            });
+          let selection: Selection;
+          if (pendingSelection) {
+            selection = TextSelection.create(doc, pendingSelection.anchor, pendingSelection.head);
+            pendingSelection = null;
+          } else {
+            selection = Selection.atStart(doc);
           }
 
-          if (changed) {
-            tocView.updateState(buildTocState(fullDoc));
-          }
+          tocView.updateState(
+            EditorState.create({
+              doc,
+              selection,
+              plugins: tocView.state.plugins,
+            }),
+          );
 
           highlightActive();
         },
