@@ -20,6 +20,7 @@ export const bookSchema = new Schema({
       content: "text*",
       marks: "",
       defining: true,
+      isolating: true,
       toDOM: () => ["h1", 0],
       parseDOM: [{ tag: "h1" }],
     },
