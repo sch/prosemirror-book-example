@@ -3,7 +3,8 @@ import { DOMParser } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { bookSchema } from "./schema";
-import { chapterPlugin, tocPlugin } from "./book-plugins";
+import { chapterPlugin } from "./chapter-plugin";
+import { tableOfContentsPlugin } from "./table-of-contents-plugin";
 
 const editorEl = document.getElementById("editor")!;
 const doc = DOMParser.fromSchema(bookSchema).parse(editorEl);
@@ -15,6 +16,6 @@ editorEl.textContent = "";
 new EditorView(editorEl, {
   state: EditorState.create({
     doc,
-    plugins: [chapterPlugin(), tocPlugin()],
+    plugins: [chapterPlugin(), tableOfContentsPlugin()],
   }),
 });
