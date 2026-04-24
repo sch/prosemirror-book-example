@@ -166,17 +166,20 @@ export function chapterPlugin(): Plugin<number> {
             return;
           }
 
-          const newIndex = chapterKey.getState(bookView.state)!;
-          const oldIndex = chapterKey.getState(prevState)!;
+          const newIndex = chapterKey.getState(bookView.state);
+          if (newIndex === undefined) return;
 
-          if (newIndex !== oldIndex || bookView.state.doc !== prevState.doc) {
-            const chapter = bookView.state.doc.child(newIndex);
-            scopedView.updateState(buildScopedState(chapter));
-          }
+          const oldIndex = chapterKey.getState(prevState);
+          if (oldIndex === undefined) return;
+
+          if (oldIndex === newIndex && bookView.state.doc === prevState.doc) return;
+
+          const chapter = bookView.state.doc.child(newIndex);
+          scopedView.updateState(buildScopedState(chapter));
         },
         destroy() {
           scopedView.destroy();
-          layout.parentNode!.replaceChild(mount, layout);
+          layout.parentNode?.replaceChild(mount, layout);
           bookView.dom.style.display = "";
         },
       };
