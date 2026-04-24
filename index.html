@@ -16,17 +16,30 @@
           system-ui,
           -apple-system,
           sans-serif;
+        display: grid;
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
         height: 100vh;
       }
 
-      #book-layout {
-        display: flex;
-        height: 100%;
+      body:has(#toc) {
+        grid-template-columns: 260px 1fr;
+      }
+
+      #toolbar {
+        grid-column: 1 / -1;
+        padding: 8px 16px;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+        font-size: 14px;
+      }
+
+      #editor {
+        padding: 24px;
+        overflow-y: auto;
       }
 
       #toc {
-        width: 260px;
-        flex-shrink: 0;
         border-right: 1px solid #ccc;
         padding: 16px;
         overflow-y: auto;
@@ -69,13 +82,7 @@
         background: #d0e0ff;
       }
 
-      #editor-wrapper {
-        flex-grow: 1;
-        flex-shrink: 1;
-        padding: 24px;
-        overflow-y: auto;
-      }
-
+      #editor > .ProseMirror,
       #editor-wrapper > div {
         max-width: 700px;
         margin: 0 auto;
@@ -104,7 +111,7 @@
       }
 
       .ProseMirror code {
-        font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+        font-family: "SF Mono", Menlo, Consolas, monospace;
         font-size: 0.9em;
         background: #f0f0f0;
         padding: 0.15em 0.35em;
@@ -128,6 +135,10 @@
     </style>
   </head>
   <body>
+    <div id="toolbar">
+      <label><input type="checkbox" id="toggle-toc" checked /> Table of Contents</label>
+      <label><input type="checkbox" id="toggle-chapter" checked /> Chapter Focus</label>
+    </div>
     <div id="editor">
       <section>
         <h1>Scoped Views</h1>

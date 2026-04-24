@@ -1,5 +1,12 @@
 import { Node } from "prosemirror-model";
-import { EditorState, Plugin, PluginKey, Selection, TextSelection, Transaction } from "prosemirror-state";
+import {
+  EditorState,
+  Plugin,
+  PluginKey,
+  Selection,
+  TextSelection,
+  Transaction,
+} from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { StepMap } from "prosemirror-transform";
 import { keymap } from "prosemirror-keymap";
@@ -32,10 +39,10 @@ function buildScopedState(fullChapter: Node): EditorState {
 
 // ── Chapter plugin ────────────────────────────────────────────────
 // Owns the active chapter index as plugin state, and manages the
-// scoped chapter EditorView. Wraps bookView.dom in an editor
-// wrapper, similar to how prosemirror-menu wraps the editor with
-// a menu bar. The TOC plugin reads and writes the active index
-// through chapterKey.
+// scoped chapter EditorView. The scoped view renders a single
+// chapter; the book view's own DOM is hidden while this plugin is
+// active. The TOC plugin reads and writes the active index through
+// chapterKey.
 
 export function chapterPlugin(): Plugin<number> {
   return new Plugin<number>({
@@ -50,18 +57,14 @@ export function chapterPlugin(): Plugin<number> {
       },
     },
     view(bookView) {
-      // Wrap bookView.dom's parent in a flex layout, like prosemirror-menu
-      // wraps the editor with a menu bar. The book view's own DOM is hidden,
-      // it exists only as a state coordination point.
+      // Create a wrapper for the scoped editor and insert it after
+      // the book view's mount. The book view's DOM is hidden while
+      // this plugin is active.
       const mount = bookView.dom.parentNode! as HTMLElement;
-      const layout = document.createElement("div");
-      layout.id = "book-layout";
-      mount.parentNode!.replaceChild(layout, mount);
-      layout.appendChild(mount);
 
       const editorWrapper = document.createElement("div");
       editorWrapper.id = "editor-wrapper";
-      layout.appendChild(editorWrapper);
+      mount.appendChild(editorWrapper);
 
       const editorContainer = document.createElement("div");
       editorWrapper.appendChild(editorContainer);
@@ -137,7 +140,7 @@ export function chapterPlugin(): Plugin<number> {
         },
         destroy() {
           scopedView.destroy();
-          layout.parentNode?.replaceChild(mount, layout);
+          editorWrapper.remove();
           bookView.dom.style.display = "";
         },
       };

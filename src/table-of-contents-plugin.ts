@@ -1,5 +1,12 @@
 import { Node } from "prosemirror-model";
-import { EditorState, Plugin, Selection, TextSelection, Transaction } from "prosemirror-state";
+import {
+  EditorState,
+  Plugin,
+  PluginKey,
+  Selection,
+  TextSelection,
+  Transaction,
+} from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { StepMap } from "prosemirror-transform";
 import { keymap } from "prosemirror-keymap";
@@ -33,31 +40,32 @@ function tocHeadingPos(tocDoc: Node, index: number): number {
   return pos;
 }
 
-// ── TOC plugin ────────────────────────────────────────────────────
-// Manages the table-of-contents EditorView. Creates its own sidebar
-// DOM and inserts it before bookView.dom, similar to how
-// prosemirror-menu prepends a menu bar. Reads and writes the active
-// chapter index owned by chapterPlugin via chapterKey.
+// ── Table of contents plugin ─────────────────────────────────────
+// Manages the table-of-contents EditorView. Renders an editable
+// flat list of chapter headings into the provided sidebar element.
+// Reads and writes the active chapter index owned by chapterPlugin
+// via chapterKey.
+
+export const tableOfContentsKey = new PluginKey("tableOfContents");
 
 export function tableOfContentsPlugin(): Plugin {
   return new Plugin({
+    key: tableOfContentsKey,
     view(bookView) {
-      // Build the sidebar DOM — the plugin owns this entirely.
+      // Insert the sidebar before the editor mount. CSS grid on
+      // body uses :has(#toc) to switch to a two-column layout.
+      const mount = bookView.dom.parentNode! as HTMLElement;
+
       const sidebar = document.createElement("div");
       sidebar.id = "toc";
+      mount.parentNode!.insertBefore(sidebar, mount);
 
       const heading = document.createElement("h2");
       heading.textContent = "Table of Contents";
       sidebar.appendChild(heading);
 
-      // Insert the sidebar as the first child of the flex layout
-      // created by chapterPlugin. bookView.dom sits inside mount,
-      // which sits inside the layout container.
-      const mount = bookView.dom.parentNode! as HTMLElement;
-      mount.parentNode!.insertBefore(sidebar, mount);
-
       function highlightActive(): void {
-        const active = chapterKey.getState(bookView.state)!;
+        const active = chapterKey.getState(bookView.state) ?? 0;
         const headings = tocView.dom.querySelectorAll("h1");
         headings.forEach(function (h, i) {
           h.classList.toggle("active", i === active);
@@ -76,7 +84,7 @@ export function tableOfContentsPlugin(): Plugin {
             const $head = tocView.state.selection.$head;
             if ($head.depth > 0) {
               const headingIndex = $head.index(0);
-              const currentIndex = chapterKey.getState(bookView.state)!;
+              const currentIndex = chapterKey.getState(bookView.state) ?? 0;
               if (headingIndex !== currentIndex) {
                 bookView.dispatch(bookView.state.tr.setMeta(chapterKey, headingIndex));
               }
