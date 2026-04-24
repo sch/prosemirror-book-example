@@ -1,5 +1,5 @@
 import { Node } from "prosemirror-model";
-import { EditorState, Plugin, PluginKey, Transaction } from "prosemirror-state";
+import { EditorState, Plugin, PluginKey, Selection, TextSelection, Transaction } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { StepMap } from "prosemirror-transform";
 import { keymap } from "prosemirror-keymap";
@@ -22,12 +22,15 @@ function buildScopedDoc(fullChapter: Node): Node {
   return bookSchema.node("doc", null, fullChapter);
 }
 
-function buildScopedState(fullChapter: Node): EditorState {
+function buildScopedState(fullChapter: Node, bookView: EditorView): EditorState {
   return EditorState.create({
     doc: buildScopedDoc(fullChapter),
     plugins: [
-      history(),
-      keymap({ "Mod-z": undo, "Mod-y": redo, "Mod-Shift-z": redo }),
+      keymap({
+        "Mod-z": () => undo(bookView.state, bookView.dispatch),
+        "Mod-y": () => redo(bookView.state, bookView.dispatch),
+        "Mod-Shift-z": () => redo(bookView.state, bookView.dispatch),
+      }),
       keymap(baseKeymap),
     ],
   });
@@ -84,12 +87,9 @@ export function chapterPlugin(): Plugin<number> {
       },
     },
     view(bookView) {
-      let skipNextUpdate = false;
-
-      // Wrap bookView.dom's parent in a flex layout, like
-      // prosemirror-menu wraps the editor with a menu bar. The book
-      // view's own DOM is hidden — it exists only as a state
-      // coordination point.
+      // Wrap bookView.dom's parent in a flex layout, like prosemirror-menu
+      // wraps the editor with a menu bar. The book view's own DOM is hidden,
+      // it exists only as a state coordination point.
       const mount = bookView.dom.parentNode! as HTMLElement;
       const layout = document.createElement("div");
       layout.id = "book-layout";
@@ -108,64 +108,52 @@ export function chapterPlugin(): Plugin<number> {
       const activeIndex = chapterKey.getState(bookView.state)!;
       const chapter = bookView.state.doc.child(activeIndex);
 
+      // The selection the scoped view should have after the next
+      // state rebuild. Set by dispatchTransaction when it bridges a
+      // doc change to the book view.
+      let pendingSelection: Selection | null = null;
+
       let scopedView!: EditorView;
       scopedView = new EditorView(editorContainer, {
-        state: buildScopedState(chapter),
+        state: buildScopedState(chapter, bookView),
         dispatchTransaction(tr: Transaction) {
-          // 1. Apply locally so typing feels instant.
-          scopedView.updateState(scopedView.state.apply(tr));
+          // If the document didn't change, apply locally (e.g. selection
+          // changes) and stop — nothing to bridge.
+          if (!tr.docChanged) {
+            scopedView.updateState(scopedView.state.apply(tr));
+            return;
+          }
 
-          // 2. Nothing to bridge if the document didn't change.
-          if (!tr.docChanged) return;
+          // Stash the post-edit selection so update() can restore it
+          // after rebuilding the scoped state.
+          pendingSelection = tr.selection;
 
-          // 3. Compute the offset for the active chapter in the full doc.
+          // Remap each step from scoped to full-doc coordinates and
+          // apply directly to the book state. The book state is the
+          // source of truth; the scoped view will be updated in the
+          // plugin update() callback below.
           const idx = chapterKey.getState(bookView.state)!;
           const offset = chapterStart(bookView.state.doc, idx);
-          console.log(
-            `[chapter-bridge] chapter=${idx}, offset=${offset}, steps=${tr.steps.length}`,
-          );
 
-          // 4. Remap each step from scoped to full-doc coordinates.
           const fullTr = bookView.state.tr;
-          fullTr.setMeta("scopedOrigin", true);
-
           for (const step of tr.steps) {
-            const stepJson = step.toJSON();
             const mapped = step.map(StepMap.offset(offset));
             if (mapped) {
-              const mappedJson = mapped.toJSON();
-              console.log(
-                `[chapter-bridge]   ${stepJson.stepType} ` +
-                  `scoped=${stepJson.from}→${stepJson.to} ` +
-                  `full=${mappedJson.from}→${mappedJson.to}`,
-              );
               const result = fullTr.maybeStep(mapped);
               if (result.failed) {
-                console.warn("[chapter-bridge]   step failed:", result.failed);
+                console.warn("[chapter-bridge] step failed:", result.failed);
               }
-            } else {
-              console.warn("[chapter-bridge]   mapping returned null");
             }
           }
 
-          // 5. Commit to the book view.
           if (fullTr.docChanged) {
-            skipNextUpdate = true;
             bookView.dispatch(fullTr);
-            console.log(
-              `[chapter-bridge] fullState updated, doc size=${bookView.state.doc.content.size}`,
-            );
           }
         },
       });
 
       return {
         update(bookView, prevState) {
-          if (skipNextUpdate) {
-            skipNextUpdate = false;
-            return;
-          }
-
           const newIndex = chapterKey.getState(bookView.state);
           if (newIndex === undefined) return;
 
@@ -175,7 +163,27 @@ export function chapterPlugin(): Plugin<number> {
           if (oldIndex === newIndex && bookView.state.doc === prevState.doc) return;
 
           const chapter = bookView.state.doc.child(newIndex);
-          scopedView.updateState(buildScopedState(chapter));
+          const doc = buildScopedDoc(chapter);
+
+          let selection: Selection;
+          if (pendingSelection) {
+            selection = TextSelection.create(
+              doc,
+              pendingSelection.anchor,
+              pendingSelection.head,
+            );
+            pendingSelection = null;
+          } else {
+            selection = Selection.atStart(doc);
+          }
+
+          scopedView.updateState(
+            EditorState.create({
+              doc,
+              selection,
+              plugins: scopedView.state.plugins,
+            }),
+          );
         },
         destroy() {
           scopedView.destroy();
@@ -233,8 +241,12 @@ export function tocPlugin(): Plugin {
             const headingIndex = $head.index(0);
             const currentIndex = chapterKey.getState(bookView.state)!;
             if (headingIndex !== currentIndex) {
-              console.log(`[toc-bridge] active chapter: ${currentIndex} → ${headingIndex}`);
-              bookView.dispatch(bookView.state.tr.setMeta(chapterKey, headingIndex));
+              console.log(
+                `[toc-bridge] active chapter: ${currentIndex} → ${headingIndex}`,
+              );
+              bookView.dispatch(
+                bookView.state.tr.setMeta(chapterKey, headingIndex),
+              );
             }
           }
 
