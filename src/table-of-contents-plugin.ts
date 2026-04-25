@@ -7,53 +7,20 @@ import {
   TextSelection,
   Transaction,
 } from "prosemirror-state";
-import { EditorView } from "prosemirror-view";
+import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
 import { StepMap } from "prosemirror-transform";
 import { keymap } from "prosemirror-keymap";
-import { baseKeymap } from "prosemirror-commands";
 import { bookSchema } from "./schema";
 import { chapterKey, chapterStart } from "./chapter-plugin";
-
-function buildTocDoc(fullDoc: Node): Node {
-  const headings: Node[] = [];
-  fullDoc.forEach(function (chapter) {
-    const heading = chapter.firstChild;
-    if (heading) headings.push(heading);
-  });
-  return bookSchema.nodes.toc_doc.create(null, headings);
-}
-
-function buildTocState(fullDoc: Node): EditorState {
-  return EditorState.create({
-    doc: buildTocDoc(fullDoc),
-    plugins: [keymap({ Enter: () => true }), keymap(baseKeymap)],
-  });
-}
-
-function tocHeadingPos(tocDoc: Node, index: number): number {
-  let pos = 0;
-  for (let i = 0; i < index; i++) {
-    pos += tocDoc.child(i).nodeSize;
-  }
-  return pos;
-}
-
-function headingsUnchanged(oldDoc: Node, newDoc: Node): boolean {
-  if (oldDoc.childCount !== newDoc.childCount) return false;
-  for (let i = 0; i < oldDoc.childCount; i++) {
-    if (oldDoc.child(i).firstChild !== newDoc.child(i).firstChild) return false;
-  }
-  return true;
-}
 
 export const tableOfContentsKey = new PluginKey("tableOfContents");
 
 const renderSpec = DOMSerializer.renderSpec.bind(null, document);
 
-// Editable flat list of chapter headings. Same dispatch bridge
-// pattern as the chapter plugin, but the offset calculation is
-// per-heading (each heading sits at a different position in the
-// full doc). Selection changes drive chapter switching via chapterKey
+// Editable flat list of chapter headings. Same dispatch bridge pattern as the
+// chapter plugin, but the offset calculation is per-heading (each heading sits
+// at a different position in the full doc). Selection changes drive chapter
+// switching via chapterKey
 export function tableOfContentsPlugin(): Plugin {
   return new Plugin({
     key: tableOfContentsKey,
@@ -69,19 +36,27 @@ export function tableOfContentsPlugin(): Plugin {
       ]);
       mount.parentNode!.insertBefore(sidebar, mount);
 
-      function highlightActive(): void {
-        const active = chapterKey.getState(bookView.state) ?? 0;
-        const headings = tocView.dom.querySelectorAll("h1");
-        headings.forEach(function (heading, i) {
-          heading.classList.toggle("active", i === active);
-        });
-      }
-
+      let activeIndex = chapterKey.getState(bookView.state) ?? 0;
       let pendingSelection: Selection | null = null;
 
-      let tocView!: EditorView;
-      tocView = new EditorView(contentDOM!, {
-        state: buildTocState(bookView.state.doc),
+      const tocView = new EditorView(contentDOM!, {
+        state: EditorState.create({
+          doc: buildTocDoc(bookView.state.doc),
+          plugins: [keymap({ Enter: () => true })],
+        }),
+        decorations(state) {
+          const decorations: Decoration[] = [];
+          state.doc.forEach(function (node, offset, index) {
+            if (index === activeIndex) {
+              decorations.push(
+                Decoration.node(offset, offset + node.nodeSize, {
+                  class: "active",
+                }),
+              );
+            }
+          });
+          return DecorationSet.create(state.doc, decorations);
+        },
         dispatchTransaction(tr: Transaction) {
           if (!tr.docChanged) {
             tocView.updateState(tocView.state.apply(tr));
@@ -97,7 +72,6 @@ export function tableOfContentsPlugin(): Plugin {
               }
             }
 
-            highlightActive();
             return;
           }
 
@@ -131,23 +105,30 @@ export function tableOfContentsPlugin(): Plugin {
         },
       });
 
-      highlightActive();
-
       return {
         update(bookView, prevState) {
+          activeIndex = chapterKey.getState(bookView.state) ?? 0;
+
           if (bookView.state.doc === prevState.doc) {
-            highlightActive();
+            // Active chapter changed but doc didn't. Rebuild state so the
+            // decoration plugin re-evaluates
+            tocView.updateState(
+              EditorState.create({
+                doc: tocView.state.doc,
+                selection: tocView.state.selection,
+                plugins: tocView.state.plugins,
+              }),
+            );
             return;
           }
 
-          // If no heading node changed (e.g. user typed in a chapter body),
-          // skip the rebuild. But if pendingSelection is set, the TOC itself
-          // initiated the edit and needs its cursor back
+          // If no heading node changed (user typed in a chapter body), skip the
+          // rebuild. But if pendingSelection is set, the TOC itself initiated
+          // the edit and needs its cursor back
           if (
             !pendingSelection &&
             headingsUnchanged(prevState.doc, bookView.state.doc)
           ) {
-            highlightActive();
             return;
           }
 
@@ -155,11 +136,8 @@ export function tableOfContentsPlugin(): Plugin {
 
           let selection: Selection;
           if (pendingSelection) {
-            selection = TextSelection.create(
-              doc,
-              pendingSelection.anchor,
-              pendingSelection.head,
-            );
+            const { anchor, head } = pendingSelection;
+            selection = TextSelection.create(doc, anchor, head);
             pendingSelection = null;
           } else {
             selection = Selection.atStart(doc);
@@ -172,8 +150,6 @@ export function tableOfContentsPlugin(): Plugin {
               plugins: tocView.state.plugins,
             }),
           );
-
-          highlightActive();
         },
         destroy() {
           tocView.destroy();
@@ -182,4 +158,29 @@ export function tableOfContentsPlugin(): Plugin {
       };
     },
   });
+}
+
+function buildTocDoc(fullDoc: Node): Node {
+  const headings: Node[] = [];
+  fullDoc.forEach(function (chapter) {
+    const heading = chapter.firstChild;
+    if (heading) headings.push(heading);
+  });
+  return bookSchema.nodes.toc_doc.create(null, headings);
+}
+
+function tocHeadingPos(tocDoc: Node, index: number): number {
+  let pos = 0;
+  for (let i = 0; i < index; i++) {
+    pos += tocDoc.child(i).nodeSize;
+  }
+  return pos;
+}
+
+function headingsUnchanged(oldDoc: Node, newDoc: Node): boolean {
+  if (oldDoc.childCount !== newDoc.childCount) return false;
+  for (let i = 0; i < oldDoc.childCount; i++) {
+    if (oldDoc.child(i).firstChild !== newDoc.child(i).firstChild) return false;
+  }
+  return true;
 }
