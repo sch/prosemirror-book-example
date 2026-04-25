@@ -28,9 +28,11 @@ class TableOfContentsView implements PluginView {
   constructor(private editorView: EditorView) {
     const mount = editorView.dom.parentNode!;
     const { dom: sidebar, contentDOM } = DOMSerializer.renderSpec(document, this.spec);
-    this.sidebar = sidebar as HTMLElement;
+    if (!(sidebar instanceof HTMLElement)) throw new Error("spec can't be a string");
+    if (!contentDOM) throw new Error("spec property lacks and output region");
+    this.sidebar = sidebar;
     mount.parentNode!.insertBefore(sidebar, mount);
-    const place = { mount: contentDOM! };
+    const place = { mount: contentDOM };
 
     this.activeIndex = chapterKey.getState(editorView.state) ?? 0;
 

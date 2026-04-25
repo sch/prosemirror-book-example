@@ -29,15 +29,14 @@ export const chapterPlugin = new Plugin<number>({
 });
 
 class ChapterView implements PluginView {
-  private editorWrapper: HTMLElement;
+  private bookDom: HTMLElement;
   private scopedView: EditorView;
   private pendingSelection: Selection | null = null;
 
   constructor(private editorView: EditorView) {
-    this.editorWrapper = document.createElement("div");
-    editorView.dom.parentNode!.appendChild(this.editorWrapper);
-    editorView.dom.style.display = "none";
-    const place = { mount: this.editorWrapper };
+    this.bookDom = editorView.dom;
+    const place = editorView.dom.parentNode!;
+    editorView.dom.remove();
 
     const activeIndex = chapterKey.getState(editorView.state)!;
     const chapter = editorView.state.doc.child(activeIndex);
@@ -77,6 +76,10 @@ class ChapterView implements PluginView {
         }
       },
     });
+
+    // Point the book view's dom at the scoped view's element so that
+    // the table of contents plugin can still find a live parentNode
+    (editorView as { dom: HTMLElement }).dom = this.scopedView.dom;
   }
 
   update(bookView: EditorView, prevState: EditorState) {
@@ -111,9 +114,11 @@ class ChapterView implements PluginView {
   }
 
   destroy() {
+    const container = this.scopedView.dom.parentNode!;
     this.scopedView.destroy();
-    (this.editorWrapper as HTMLElement).remove();
-    this.editorView.dom.style.display = "";
+    // Patch back in the original editorView's dom element
+    (this.editorView as { dom: HTMLElement }).dom = this.bookDom;
+    container.appendChild(this.bookDom);
   }
 }
 
