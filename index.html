@@ -141,83 +141,114 @@
     </div>
     <div id="editor">
       <section>
-        <h1>Scoped Views</h1>
+        <h1>One Schema With Two Top Nodes</h1>
         <p>
-          This example demonstrates how to render and edit a subset of a ProseMirror document. A
-          single authoritative
-          <code>EditorState</code> holds a full book, but two separate <code>EditorView</code>s each
-          show a different projection of it. The main panel renders one chapter at a time (you are
-          reading this now), and the sidebar shows an editable table of contents (a flat list of
-          chapter headings).
+          A naive approach to sub-document editing is to define a separate schema for each view.
+          That breaks.
+          <code>NodeType</code> instances are compared by identity, and
+          <code>new Schema()</code> always creates fresh ones. Steps produced against one schema
+          can't be applied to a document from another. You'd have to serialize and deserialize,
+          which defeats the purpose.
         </p>
         <p>
-          Edits in either view are remapped into full-document coordinates and applied to the shared
-          state, keeping everything in sync. The approach generalizes to any situation where you
-          want users to focus on one part of a larger document without losing the rest.
+          This example uses a single <code>bookSchema</code> with two top-level node types. Both
+          views share the same <code>heading</code> type, so steps from the TOC view can be remapped
+          and applied to the full document directly.
+        </p>
+        <pre>
+doc:     { content: "chapter+" }
+toc_doc: { content: "heading+" }
+chapter: { content: "heading block+" }
+heading: { content: "text*", isolating: true }</pre
+        >
+        <p>
+          Is this the right way to handle it? Could the schema system support some form of
+          sub-schema or schema projection instead? This works, but it requires knowing upfront which
+          nodes each view needs.
         </p>
       </section>
       <section>
         <h1>The Dispatch Bridge</h1>
         <p>
-          Each scoped view has a custom
-          <code>dispatchTransaction</code> that intercepts every transaction. This is the same as
-          the pattern in the prosemirror.net footnote example.
+          Neither scoped view owns its state transitions. Each one has a custom
+          <code>dispatchTransaction</code> that intercepts every transaction, remaps its steps into
+          full-document coordinates, and dispatches the result on the book view. The scoped view is
+          a lens. It renders a slice of the document and translates edits back.
         </p>
         <p>
-          For the chapter view, this is a single uniform offset: every position inside the chapter
-          differs from the full-doc position by exactly <code>chapterStart(doc, i)</code>.
-          <code>StepMap.offset(n)</code> shifts all positions by <code>n</code>, so
-          <code>step.map(StepMap.offset(n))</code> converts from scoped to full coordinates.
+          This is the same pattern as the footnote example in the ProseMirror docs. The chapter view
+          uses a uniform offset: every position in the scoped doc differs from the full-doc position
+          by
+          <code>chapterStart(doc, i)</code>. <code>step.map(StepMap.offset(n))</code> does the
+          translation.
         </p>
         <p>
-          For the TOC view, the mapping is per-heading. Each heading lives at a different position
-          in the full document, so the bridge resolves which heading a step falls in, computes that
-          heading's specific offset, and remaps with it. The offset is stable across multi-step
-          transactions because insertions shift both documents equally.
+          The TOC view is more interesting. Each heading lives at a different position in the full
+          document, so the offset is per-heading. The bridge resolves which heading a step falls in,
+          computes that heading's offset, and remaps with it. Same mechanism, but the mapping
+          function is no longer trivial.
         </p>
       </section>
       <section>
-        <h1>Position Math</h1>
+        <h1>Per-Heading Offsets</h1>
         <p>
-          <code>doc.forEach((child, offset, index) =&gt; ...)</code>
-          gives offsets relative to the parent's content. For the top-level doc node, these
-          content-relative offsets are absolute positions: position 0 is the start of the document's
-          content.
+          For the chapter view, one number is enough. For the TOC, we need to figure out which
+          heading a step belongs to and compute its specific offset. The math:
         </p>
-        <p>
-          In the full document, a chapter's heading starts at
-          <code>chapterStart(doc, i) + 1</code>. The <code>+1</code> enters the chapter node to
-          reach its first child. In the table-of-contents nodes, <code>heading[i]</code> starts at
-          the sum of all preceding headings' <code>nodeSize</code>s. The offset between these two
-          positions is what <code>StepMap.offset</code> uses to determine the index of the step as
-          resolved against the root doc.
-        </p>
-        <p>The full offset calculation:</p>
         <pre>
 const fullPos = chapterStart(fullDoc, hIndex) + 1
-const tocPos = tocHeadingPos(oldDoc, hIndex)
+const tocPos = tocHeadingPos(tocDoc, hIndex)
 const offset = fullPos - tocPos</pre
         >
+        <p>
+          The <code>+1</code> enters the chapter node to reach its first child (the heading).
+          <code>tocHeadingPos</code> sums up preceding headings' <code>nodeSize</code>s in the flat
+          TOC document. The difference between these two positions is the offset for
+          <code>StepMap.offset</code>.
+        </p>
+        <p>
+          This is stable across multi-step transactions because insertions shift both documents
+          equally. But it does require resolving the step's <code>from</code> position against the
+          old TOC doc to find the heading index. There might be a cleaner way to do this.
+        </p>
       </section>
       <section>
-        <h1>"Syncing" Between Views</h1>
+        <h1>Selection Across Rebuilds</h1>
         <p>
-          Edits flow in both directions. When you type in the chapter view, the dispatch glue
-          updates the full state, then
-          <code>syncTOC()</code> checks whether any heading's text changed. Since nodes are
-          immutable, this is a cheap identity comparison. If the heading node is the same object,
-          its content hasn't changed.
+          When the outer state changes, each scoped view rebuilds its
+          <code>EditorState</code> from scratch. The old <code>Selection</code> can't be reused. Its
+          <code>$anchor</code> and <code>$head</code> are <code>ResolvedPos</code> objects tied to
+          the old document instance. Passing them to a new state throws.
         </p>
         <p>
-          When you type in the table of contents, the dispatch bridge updates the full state in the
-          same way, then rebuilds the chapter view from the updated state via
-          <code>resyncScopedView()</code>. This loses the chapter view's undo history, but keeps the
-          document consistent.
+          The workaround: stash the raw <code>anchor</code> and <code>head</code> positions from the
+          transaction before dispatching, then recreate the selection with
+          <code>TextSelection.create(newDoc, anchor, head)</code>
+          after the rebuild. This works because the positions themselves are still valid in the new
+          doc (the content at those positions hasn't moved).
         </p>
         <p>
-          Chapter switching is driven by which chapter node is selected. When the table of content's
-          selection moves to a different heading, the bridge calls
-          <code>setActiveIndex()</code> and rebuilds the scoped view.
+          This feels like something the framework could help with. A way to create a selection that
+          isn't bound to a specific doc instance, or a way to "transplant" a selection to a new doc
+          with the same structure. Right now it's manual.
+        </p>
+      </section>
+      <section>
+        <h1>Immutability For Skipping Work</h1>
+        <p>
+          ProseMirror nodes are persistent data structures. When you type in a chapter, only that
+          chapter node changes. The heading nodes of other chapters are the same objects. You can
+          check <code>oldHeading === newHeading</code> and skip work when they match.
+        </p>
+        <p>
+          The table of contents plugin's <code>update()</code> uses this. Before rebuilding its
+          state, it walks the chapters and compares each heading by identity. If none changed (the
+          user typed in a chapter body, not a heading), it skips the rebuild entirely.
+        </p>
+        <p>
+          This is the same trick React uses with immutable props. For a book with a handful of
+          chapters, the savings are negligible. For a document with hundreds of sections, it could
+          matter.
         </p>
       </section>
     </div>
