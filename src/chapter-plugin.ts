@@ -1,4 +1,4 @@
-import { DOMSerializer, Node, type DOMOutputSpec } from "prosemirror-model";
+import { Node } from "prosemirror-model";
 import { EditorState, Plugin, PluginKey, Selection, TextSelection } from "prosemirror-state";
 import type { PluginView } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
@@ -34,22 +34,15 @@ class ChapterView implements PluginView {
   private pendingSelection: Selection | null = null;
 
   constructor(private editorView: EditorView) {
-    const mount = editorView.dom.parentNode!;
-
-    const spec: DOMOutputSpec = ["div", { id: "editor-wrapper" }, 0];
-    const { dom: editorWrapper, contentDOM } = DOMSerializer.renderSpec(document, spec);
-    this.editorWrapper = editorWrapper as HTMLElement;
-    mount.appendChild(editorWrapper);
-
+    this.editorWrapper = document.createElement("div");
+    editorView.dom.parentNode!.appendChild(this.editorWrapper);
     editorView.dom.style.display = "none";
+    const place = { mount: this.editorWrapper };
 
     const activeIndex = chapterKey.getState(editorView.state)!;
     const chapter = editorView.state.doc.child(activeIndex);
 
-    // Selection can't survive a state rebuild (ResolvedPos is bound to a
-    // specific doc). Stash raw positions here, recreate in update() via
-    // TextSelection.create
-    this.scopedView = new EditorView(contentDOM!, {
+    this.scopedView = new EditorView(place, {
       state: EditorState.create({
         doc: chapter,
         plugins: [keymap(baseKeymap)],
@@ -60,6 +53,9 @@ class ChapterView implements PluginView {
           return;
         }
 
+        // Selection can't survive a state rebuild (ResolvedPos is bound to a
+        // specific doc). Stash raw positions here, recreate in update() via
+        // TextSelection.create
         this.pendingSelection = tr.selection;
 
         const idx = chapterKey.getState(this.editorView.state)!;
