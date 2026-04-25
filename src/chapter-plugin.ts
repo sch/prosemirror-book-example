@@ -102,11 +102,8 @@ class ChapterView implements PluginView {
 
     let selection: Selection;
     if (this.pendingSelection) {
-      selection = TextSelection.create(
-        doc,
-        this.pendingSelection.anchor,
-        this.pendingSelection.head,
-      );
+      const { anchor, head } = this.pendingSelection;
+      selection = TextSelection.create(doc, anchor, head);
       this.pendingSelection = null;
     } else {
       selection = Selection.atStart(doc);
