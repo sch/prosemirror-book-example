@@ -7,8 +7,6 @@ import { keymap } from "prosemirror-keymap";
 import { baseKeymap } from "prosemirror-commands";
 import { bookSchema } from "./schema";
 
-const renderSpec = DOMSerializer.renderSpec.bind(null, document);
-
 export const chapterKey = new PluginKey<number>("chapter");
 
 // Renders a single chapter in a scoped EditorView. The book view's DOM is

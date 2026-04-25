@@ -3,13 +3,10 @@ import { EditorState, Plugin, PluginKey, Selection, TextSelection } from "prosem
 import type { PluginView } from "prosemirror-state";
 import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
 import { StepMap } from "prosemirror-transform";
-import { keymap } from "prosemirror-keymap";
 import { bookSchema } from "./schema";
 import { chapterKey, chapterStart } from "./chapter-plugin";
 
 export const tableOfContentsKey = new PluginKey("tableOfContents");
-
-const renderSpec = DOMSerializer.renderSpec.bind(null, document);
 
 // Editable flat list of chapter headings. Same dispatch bridge pattern as the
 // chapter plugin, but the offset calculation is per-heading (each heading sits
@@ -31,7 +28,7 @@ class TableOfContentsView implements PluginView {
   constructor(private editorView: EditorView) {
     const mount = editorView.dom.parentNode!;
 
-    const { dom: sidebar, contentDOM } = renderSpec([
+    const { dom: sidebar, contentDOM } = DOMSerializer.renderSpec(document, [
       "div",
       { id: "toc" },
       ["h2", "Table of Contents"],
@@ -45,7 +42,6 @@ class TableOfContentsView implements PluginView {
     this.tocView = new EditorView(contentDOM!, {
       state: EditorState.create({
         doc: buildTocDoc(editorView.state.doc),
-        plugins: [keymap({ Enter: () => true })],
       }),
       decorations: (state) => {
         const decorations: Decoration[] = [];
@@ -64,7 +60,7 @@ class TableOfContentsView implements PluginView {
         if (!tr.docChanged) {
           this.tocView.updateState(this.tocView.state.apply(tr));
 
-          const $head = this.tocView.state.selection.$head;
+          const { $head } = this.tocView.state.selection;
           if ($head.depth > 0) {
             const headingIndex = $head.index(0);
             const currentIndex = chapterKey.getState(this.editorView.state) ?? 0;
@@ -78,40 +74,35 @@ class TableOfContentsView implements PluginView {
 
         this.pendingSelection = tr.selection;
 
-        const oldDoc = this.tocView.state.doc;
-        const fullTr = this.editorView.state.tr;
+        const { $head } = this.tocView.state.selection;
+        const hIndex = $head.depth > 0 ? $head.index(0) : 0;
+        const bookOffset = chapterStart(this.editorView.state.doc, hIndex);
+        const headerOffset = tocHeadingPos(this.tocView.state.doc, hIndex);
+        const offset = bookOffset + 1 - headerOffset;
 
+        const outerTr = this.editorView.state.tr;
         for (const step of tr.steps) {
-          const stepJson = step.toJSON();
-          const from: number = stepJson.from;
-          const $from = oldDoc.resolve(from);
-          const hIndex = $from.depth > 0 ? $from.index(0) : 0;
-
-          const fullPos = chapterStart(this.editorView.state.doc, hIndex) + 1;
-          const tocPos = tocHeadingPos(oldDoc, hIndex);
-          const offset = fullPos - tocPos;
-
           const mapped = step.map(StepMap.offset(offset));
           if (mapped) {
-            const result = fullTr.maybeStep(mapped);
+            const result = outerTr.maybeStep(mapped);
             if (result.failed) {
               console.warn("[toc-bridge] step failed:", result.failed);
             }
           }
         }
 
-        if (fullTr.docChanged) {
-          this.editorView.dispatch(fullTr);
+        if (outerTr.docChanged) {
+          this.editorView.dispatch(outerTr);
         }
       },
     });
   }
 
-  update(bookView: EditorView, prevState: EditorState) {
-    this.editorView = bookView;
-    this.activeIndex = chapterKey.getState(bookView.state) ?? 0;
+  update(outerView: EditorView, prevState: EditorState) {
+    this.editorView = outerView;
+    this.activeIndex = chapterKey.getState(outerView.state) ?? 0;
 
-    if (bookView.state.doc === prevState.doc) {
+    if (outerView.state.doc === prevState.doc) {
       // Active chapter changed but doc didn't. Rebuild state so the
       // decorations function re-evaluates
       this.tocView.updateState(
@@ -127,11 +118,11 @@ class TableOfContentsView implements PluginView {
     // If no heading node changed (user typed in a chapter body), skip the
     // rebuild. But if pendingSelection is set, the TOC itself initiated the
     // edit and needs its cursor back
-    if (!this.pendingSelection && headingsUnchanged(prevState.doc, bookView.state.doc)) {
+    if (!this.pendingSelection && headingsUnchanged(prevState.doc, outerView.state.doc)) {
       return;
     }
 
-    const doc = buildTocDoc(bookView.state.doc);
+    const doc = buildTocDoc(outerView.state.doc);
 
     let selection: Selection;
     if (this.pendingSelection) {
