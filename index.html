@@ -132,6 +132,50 @@
         font-size: 0.85em;
         line-height: 1.5;
       }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #1a1a1a;
+          color: #e0e0e0;
+        }
+
+        #toolbar {
+          background: #252525;
+          border-bottom-color: #444;
+        }
+
+        #toc {
+          background: #202020;
+          border-right-color: #444;
+        }
+
+        #toc h2 {
+          color: #999;
+        }
+
+        #toc .ProseMirror h1:hover {
+          background: #333;
+        }
+
+        #toc .ProseMirror h1.active {
+          background: #1a3a5c;
+        }
+
+        #toc .ProseMirror h1.active:hover {
+          background: #1a3a5c;
+        }
+
+        .ProseMirror {
+          border-color: #444;
+        }
+
+        .ProseMirror code {
+          background: #2a2a2a;
+        }
+
+        .ProseMirror pre {
+          background: #252525;
+        }
+      }
     </style>
   </head>
   <body>
