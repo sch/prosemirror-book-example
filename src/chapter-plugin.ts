@@ -56,7 +56,10 @@ class ChapterView implements PluginView {
     // specific doc). Stash raw positions here, recreate in update() via
     // TextSelection.create
     this.scopedView = new EditorView(contentDOM!, {
-      state: buildScopedState(chapter),
+      state: EditorState.create({
+        doc: bookSchema.nodes.doc.create(null, chapter),
+        plugins: [keymap(baseKeymap)],
+      }),
       dispatchTransaction: (tr) => {
         if (!tr.docChanged) {
           this.scopedView.updateState(this.scopedView.state.apply(tr));
@@ -68,19 +71,19 @@ class ChapterView implements PluginView {
         const idx = chapterKey.getState(this.editorView.state)!;
         const offset = chapterStart(this.editorView.state.doc, idx);
 
-        const fullTr = this.editorView.state.tr;
+        const outerTr = this.editorView.state.tr;
         for (const step of tr.steps) {
           const mapped = step.map(StepMap.offset(offset));
           if (mapped) {
-            const result = fullTr.maybeStep(mapped);
+            const result = outerTr.maybeStep(mapped);
             if (result.failed) {
               console.warn("[chapter-bridge] step failed:", result.failed);
             }
           }
         }
 
-        if (fullTr.docChanged) {
-          this.editorView.dispatch(fullTr);
+        if (outerTr.docChanged) {
+          this.editorView.dispatch(outerTr);
         }
       },
     });
@@ -98,7 +101,7 @@ class ChapterView implements PluginView {
     if (oldIndex === newIndex && bookView.state.doc === prevState.doc) return;
 
     const chapter = bookView.state.doc.child(newIndex);
-    const doc = buildScopedDoc(chapter);
+    const doc = bookSchema.nodes.doc.create(null, chapter);
 
     let selection: Selection;
     if (this.pendingSelection) {
@@ -135,15 +138,4 @@ export function chapterStart(doc: Node, targetIndex: number) {
   });
   if (result === -1) throw new Error(`No chapter at index ${targetIndex}`);
   return result;
-}
-
-function buildScopedDoc(fullChapter: Node) {
-  return bookSchema.node("doc", null, fullChapter);
-}
-
-function buildScopedState(fullChapter: Node) {
-  return EditorState.create({
-    doc: buildScopedDoc(fullChapter),
-    plugins: [keymap(baseKeymap)],
-  });
 }
