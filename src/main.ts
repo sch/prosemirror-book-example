@@ -16,15 +16,10 @@ const toggleChapter = document.getElementById("toggle-chapter") as HTMLInputElem
 let tocEnabled = toggleToc.checked;
 let chapterEnabled = toggleChapter.checked;
 
-// Stable plugin instances so they can be removed and re-added
-// via reconfigure without losing their identity.
-const chapter = chapterPlugin();
-const toc = tableOfContentsPlugin();
-
 function buildPlugins(): Plugin[] {
   const plugins: Plugin[] = [];
-  if (chapterEnabled) plugins.push(chapter);
-  if (tocEnabled) plugins.push(toc);
+  if (chapterEnabled) plugins.push(chapterPlugin);
+  if (tocEnabled) plugins.push(tableOfContentsPlugin);
   return plugins;
 }
 
