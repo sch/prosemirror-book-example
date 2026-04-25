@@ -1,4 +1,4 @@
-import { DOMSerializer, Node } from "prosemirror-model";
+import { DOMSerializer, Node, type DOMOutputSpec } from "prosemirror-model";
 import { EditorState, Plugin, PluginKey, Selection, TextSelection } from "prosemirror-state";
 import type { PluginView } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
@@ -39,11 +39,8 @@ class ChapterView implements PluginView {
   constructor(private editorView: EditorView) {
     const mount = editorView.dom.parentNode!;
 
-    const { dom: editorWrapper, contentDOM } = renderSpec([
-      "div",
-      { id: "editor-wrapper" },
-      ["div", 0],
-    ]);
+    const spec: DOMOutputSpec = ["div", { id: "editor-wrapper" }, 0];
+    const { dom: editorWrapper, contentDOM } = DOMSerializer.renderSpec(document, spec);
     this.editorWrapper = editorWrapper as HTMLElement;
     mount.appendChild(editorWrapper);
 
