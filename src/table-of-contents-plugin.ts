@@ -34,7 +34,7 @@ class TableOfContentsView implements PluginView {
     mount.parentNode!.insertBefore(sidebar, mount);
     const place = { mount: contentDOM };
 
-    this.activeIndex = chapterKey.getState(editorView.state) ?? 0;
+    this.activeIndex = resolveActiveIndex(editorView);
 
     this.tocView = new EditorView(place, {
       state: EditorState.create({
@@ -97,18 +97,14 @@ class TableOfContentsView implements PluginView {
 
   update(outerView: EditorView, prevState: EditorState) {
     this.editorView = outerView;
-    this.activeIndex = chapterKey.getState(outerView.state) ?? 0;
+    const prevActiveIndex = this.activeIndex;
+    this.activeIndex = resolveActiveIndex(outerView);
 
     if (outerView.state.doc === prevState.doc) {
-      // Active chapter changed but doc didn't. Rebuild state so the
-      // decorations function re-evaluates
-      this.tocView.updateState(
-        EditorState.create({
-          doc: this.tocView.state.doc,
-          selection: this.tocView.state.selection,
-          plugins: this.tocView.state.plugins,
-        }),
-      );
+      if (this.activeIndex !== prevActiveIndex) {
+        // Active chapter changed but doc didn't
+        forceRedraw(this.tocView);
+      }
       return;
     }
 
@@ -116,6 +112,9 @@ class TableOfContentsView implements PluginView {
     // rebuild. But if pendingSelection is set, the TOC itself initiated the
     // edit and needs its cursor back
     if (!this.pendingSelection && headingsUnchanged(prevState.doc, outerView.state.doc)) {
+      if (this.activeIndex !== prevActiveIndex) {
+        forceRedraw(this.tocView);
+      }
       return;
     }
 
@@ -160,6 +159,19 @@ function tocHeadingPos(tocDoc: Node, index: number) {
     pos += tocDoc.child(i).nodeSize;
   }
   return pos;
+}
+
+// The selected chapter node's index. Either comes from the chapter plugin's
+// focued node or the active selection in the parent doc
+function resolveActiveIndex(view: EditorView) {
+  const chapterState = chapterKey.getState(view.state);
+  if (chapterState != null) return chapterState;
+  return view.state.selection.$head.index(0);
+}
+
+// Apply an empty transaction so the decorations function re-evaluates
+function forceRedraw(view: EditorView) {
+  view.updateState(view.state.apply(view.state.tr));
 }
 
 function headingsUnchanged(oldDoc: Node, newDoc: Node) {
