@@ -1,12 +1,6 @@
 import { DOMSerializer, Node } from "prosemirror-model";
-import {
-  EditorState,
-  Plugin,
-  PluginKey,
-  Selection,
-  TextSelection,
-  Transaction,
-} from "prosemirror-state";
+import { EditorState, Plugin, PluginKey, Selection, TextSelection } from "prosemirror-state";
+import type { PluginView } from "prosemirror-state";
 import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
 import { StepMap } from "prosemirror-transform";
 import { keymap } from "prosemirror-keymap";
@@ -22,10 +16,20 @@ const renderSpec = DOMSerializer.renderSpec.bind(null, document);
 // at a different position in the full doc). Selection changes drive chapter
 // switching via chapterKey
 export const tableOfContentsPlugin = new Plugin({
-  key: tableOfContentsKey,
-  view(bookView) {
-    // Insert the sidebar before the editor mount
-    const mount = bookView.dom.parentNode! as HTMLElement;
+  key: new PluginKey("tableOfContents"),
+  view(editorView) {
+    return new TableOfContentsView(editorView);
+  },
+});
+
+class TableOfContentsView implements PluginView {
+  private sidebar: HTMLElement;
+  private tocView: EditorView;
+  private activeIndex: number;
+  private pendingSelection: Selection | null = null;
+
+  constructor(private editorView: EditorView) {
+    const mount = editorView.dom.parentNode!;
 
     const { dom: sidebar, contentDOM } = renderSpec([
       "div",
@@ -33,20 +37,20 @@ export const tableOfContentsPlugin = new Plugin({
       ["h2", "Table of Contents"],
       ["div", 0],
     ]);
+    this.sidebar = sidebar as HTMLElement;
     mount.parentNode!.insertBefore(sidebar, mount);
 
-    let activeIndex = chapterKey.getState(bookView.state) ?? 0;
-    let pendingSelection: Selection | null = null;
+    this.activeIndex = chapterKey.getState(editorView.state) ?? 0;
 
-    const tocView = new EditorView(contentDOM!, {
+    this.tocView = new EditorView(contentDOM!, {
       state: EditorState.create({
-        doc: buildTocDoc(bookView.state.doc),
+        doc: buildTocDoc(editorView.state.doc),
         plugins: [keymap({ Enter: () => true })],
       }),
-      decorations(state) {
+      decorations: (state) => {
         const decorations: Decoration[] = [];
-        state.doc.forEach(function (node, offset, index) {
-          if (index === activeIndex) {
+        state.doc.forEach((node, offset, index) => {
+          if (index === this.activeIndex) {
             decorations.push(
               Decoration.node(offset, offset + node.nodeSize, {
                 class: "active",
@@ -56,26 +60,26 @@ export const tableOfContentsPlugin = new Plugin({
         });
         return DecorationSet.create(state.doc, decorations);
       },
-      dispatchTransaction(tr: Transaction) {
+      dispatchTransaction: (tr) => {
         if (!tr.docChanged) {
-          tocView.updateState(tocView.state.apply(tr));
+          this.tocView.updateState(this.tocView.state.apply(tr));
 
-          const $head = tocView.state.selection.$head;
+          const $head = this.tocView.state.selection.$head;
           if ($head.depth > 0) {
             const headingIndex = $head.index(0);
-            const currentIndex = chapterKey.getState(bookView.state) ?? 0;
+            const currentIndex = chapterKey.getState(this.editorView.state) ?? 0;
             if (headingIndex !== currentIndex) {
-              bookView.dispatch(bookView.state.tr.setMeta(chapterKey, headingIndex));
+              this.editorView.dispatch(this.editorView.state.tr.setMeta(chapterKey, headingIndex));
             }
           }
 
           return;
         }
 
-        pendingSelection = tr.selection;
+        this.pendingSelection = tr.selection;
 
-        const oldDoc = tocView.state.doc;
-        const fullTr = bookView.state.tr;
+        const oldDoc = this.tocView.state.doc;
+        const fullTr = this.editorView.state.tr;
 
         for (const step of tr.steps) {
           const stepJson = step.toJSON();
@@ -83,7 +87,7 @@ export const tableOfContentsPlugin = new Plugin({
           const $from = oldDoc.resolve(from);
           const hIndex = $from.depth > 0 ? $from.index(0) : 0;
 
-          const fullPos = chapterStart(bookView.state.doc, hIndex) + 1;
+          const fullPos = chapterStart(this.editorView.state.doc, hIndex) + 1;
           const tocPos = tocHeadingPos(oldDoc, hIndex);
           const offset = fullPos - tocPos;
 
@@ -97,63 +101,63 @@ export const tableOfContentsPlugin = new Plugin({
         }
 
         if (fullTr.docChanged) {
-          bookView.dispatch(fullTr);
+          this.editorView.dispatch(fullTr);
         }
       },
     });
+  }
 
-    return {
-      update(bookView, prevState) {
-        activeIndex = chapterKey.getState(bookView.state) ?? 0;
+  update(bookView: EditorView, prevState: EditorState) {
+    this.editorView = bookView;
+    this.activeIndex = chapterKey.getState(bookView.state) ?? 0;
 
-        if (bookView.state.doc === prevState.doc) {
-          // Active chapter changed but doc didn't. Rebuild state so the
-          // decoration plugin re-evaluates
-          tocView.updateState(
-            EditorState.create({
-              doc: tocView.state.doc,
-              selection: tocView.state.selection,
-              plugins: tocView.state.plugins,
-            }),
-          );
-          return;
-        }
+    if (bookView.state.doc === prevState.doc) {
+      // Active chapter changed but doc didn't. Rebuild state so the
+      // decorations function re-evaluates
+      this.tocView.updateState(
+        EditorState.create({
+          doc: this.tocView.state.doc,
+          selection: this.tocView.state.selection,
+          plugins: this.tocView.state.plugins,
+        }),
+      );
+      return;
+    }
 
-        // If no heading node changed (user typed in a chapter body), skip the
-        // rebuild. But if pendingSelection is set, the TOC itself initiated the
-        // edit and needs its cursor back
-        if (!pendingSelection && headingsUnchanged(prevState.doc, bookView.state.doc)) {
-          return;
-        }
+    // If no heading node changed (user typed in a chapter body), skip the
+    // rebuild. But if pendingSelection is set, the TOC itself initiated the
+    // edit and needs its cursor back
+    if (!this.pendingSelection && headingsUnchanged(prevState.doc, bookView.state.doc)) {
+      return;
+    }
 
-        const doc = buildTocDoc(bookView.state.doc);
+    const doc = buildTocDoc(bookView.state.doc);
 
-        let selection: Selection;
-        if (pendingSelection) {
-          const { anchor, head } = pendingSelection;
-          selection = TextSelection.create(doc, anchor, head);
-          pendingSelection = null;
-        } else {
-          selection = Selection.atStart(doc);
-        }
+    let selection: Selection;
+    if (this.pendingSelection) {
+      const { anchor, head } = this.pendingSelection;
+      selection = TextSelection.create(doc, anchor, head);
+      this.pendingSelection = null;
+    } else {
+      selection = Selection.atStart(doc);
+    }
 
-        tocView.updateState(
-          EditorState.create({
-            doc,
-            selection,
-            plugins: tocView.state.plugins,
-          }),
-        );
-      },
-      destroy() {
-        tocView.destroy();
-        (sidebar as HTMLElement).remove();
-      },
-    };
-  },
-});
+    this.tocView.updateState(
+      EditorState.create({
+        doc,
+        selection,
+        plugins: this.tocView.state.plugins,
+      }),
+    );
+  }
 
-function buildTocDoc(fullDoc: Node): Node {
+  destroy() {
+    this.tocView.destroy();
+    (this.sidebar as HTMLElement).remove();
+  }
+}
+
+function buildTocDoc(fullDoc: Node) {
   const headings: Node[] = [];
   fullDoc.forEach(function (chapter) {
     const heading = chapter.firstChild;
@@ -162,7 +166,7 @@ function buildTocDoc(fullDoc: Node): Node {
   return bookSchema.nodes.toc_doc.create(null, headings);
 }
 
-function tocHeadingPos(tocDoc: Node, index: number): number {
+function tocHeadingPos(tocDoc: Node, index: number) {
   let pos = 0;
   for (let i = 0; i < index; i++) {
     pos += tocDoc.child(i).nodeSize;
@@ -170,7 +174,7 @@ function tocHeadingPos(tocDoc: Node, index: number): number {
   return pos;
 }
 
-function headingsUnchanged(oldDoc: Node, newDoc: Node): boolean {
+function headingsUnchanged(oldDoc: Node, newDoc: Node) {
   if (oldDoc.childCount !== newDoc.childCount) return false;
   for (let i = 0; i < oldDoc.childCount; i++) {
     if (oldDoc.child(i).firstChild !== newDoc.child(i).firstChild) return false;

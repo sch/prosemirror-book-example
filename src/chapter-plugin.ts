@@ -1,21 +1,15 @@
 import { DOMSerializer, Node } from "prosemirror-model";
-import {
-  EditorState,
-  Plugin,
-  PluginKey,
-  Selection,
-  TextSelection,
-  Transaction,
-} from "prosemirror-state";
+import { EditorState, Plugin, PluginKey, Selection, TextSelection } from "prosemirror-state";
+import type { PluginView } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { StepMap } from "prosemirror-transform";
 import { keymap } from "prosemirror-keymap";
 import { baseKeymap } from "prosemirror-commands";
 import { bookSchema } from "./schema";
 
-export const chapterKey = new PluginKey<number>("chapter");
-
 const renderSpec = DOMSerializer.renderSpec.bind(null, document);
+
+export const chapterKey = new PluginKey<number>("chapter");
 
 // Renders a single chapter in a scoped EditorView. The book view's DOM is
 // hidden; this view is the lens. Edits are remapped to full-doc coordinates via
@@ -32,42 +26,49 @@ export const chapterPlugin = new Plugin<number>({
       return newIndex != null ? newIndex : value;
     },
   },
-  view(bookView) {
-    // The book view's DOM is hidden. This wrapper holds the scoped view that
-    // actually renders
-    const mount = bookView.dom.parentNode! as HTMLElement;
+  view(editorView) {
+    return new ChapterView(editorView);
+  },
+});
+
+class ChapterView implements PluginView {
+  private editorWrapper: HTMLElement;
+  private scopedView: EditorView;
+  private pendingSelection: Selection | null = null;
+
+  constructor(private editorView: EditorView) {
+    const mount = editorView.dom.parentNode!;
 
     const { dom: editorWrapper, contentDOM } = renderSpec([
       "div",
       { id: "editor-wrapper" },
       ["div", 0],
     ]);
+    this.editorWrapper = editorWrapper as HTMLElement;
     mount.appendChild(editorWrapper);
 
-    bookView.dom.style.display = "none";
+    editorView.dom.style.display = "none";
 
-    const activeIndex = chapterKey.getState(bookView.state)!;
-    const chapter = bookView.state.doc.child(activeIndex);
+    const activeIndex = chapterKey.getState(editorView.state)!;
+    const chapter = editorView.state.doc.child(activeIndex);
 
     // Selection can't survive a state rebuild (ResolvedPos is bound to a
     // specific doc). Stash raw positions here, recreate in update() via
     // TextSelection.create
-    let pendingSelection: Selection | null = null;
-
-    const scopedView = new EditorView(contentDOM!, {
+    this.scopedView = new EditorView(contentDOM!, {
       state: buildScopedState(chapter),
-      dispatchTransaction(tr: Transaction) {
+      dispatchTransaction: (tr) => {
         if (!tr.docChanged) {
-          scopedView.updateState(scopedView.state.apply(tr));
+          this.scopedView.updateState(this.scopedView.state.apply(tr));
           return;
         }
 
-        pendingSelection = tr.selection;
+        this.pendingSelection = tr.selection;
 
-        const idx = chapterKey.getState(bookView.state)!;
-        const offset = chapterStart(bookView.state.doc, idx);
+        const idx = chapterKey.getState(this.editorView.state)!;
+        const offset = chapterStart(this.editorView.state.doc, idx);
 
-        const fullTr = bookView.state.tr;
+        const fullTr = this.editorView.state.tr;
         for (const step of tr.steps) {
           const mapped = step.map(StepMap.offset(offset));
           if (mapped) {
@@ -79,50 +80,55 @@ export const chapterPlugin = new Plugin<number>({
         }
 
         if (fullTr.docChanged) {
-          bookView.dispatch(fullTr);
+          this.editorView.dispatch(fullTr);
         }
       },
     });
+  }
 
-    return {
-      update(bookView, prevState) {
-        const newIndex = chapterKey.getState(bookView.state);
-        if (newIndex === undefined) return;
+  update(bookView: EditorView, prevState: EditorState) {
+    this.editorView = bookView;
 
-        const oldIndex = chapterKey.getState(prevState);
-        if (oldIndex === undefined) return;
+    const newIndex = chapterKey.getState(bookView.state);
+    if (newIndex === undefined) return;
 
-        if (oldIndex === newIndex && bookView.state.doc === prevState.doc) return;
+    const oldIndex = chapterKey.getState(prevState);
+    if (oldIndex === undefined) return;
 
-        const chapter = bookView.state.doc.child(newIndex);
-        const doc = buildScopedDoc(chapter);
+    if (oldIndex === newIndex && bookView.state.doc === prevState.doc) return;
 
-        let selection: Selection;
-        if (pendingSelection) {
-          selection = TextSelection.create(doc, pendingSelection.anchor, pendingSelection.head);
-          pendingSelection = null;
-        } else {
-          selection = Selection.atStart(doc);
-        }
+    const chapter = bookView.state.doc.child(newIndex);
+    const doc = buildScopedDoc(chapter);
 
-        scopedView.updateState(
-          EditorState.create({
-            doc,
-            selection,
-            plugins: scopedView.state.plugins,
-          }),
-        );
-      },
-      destroy() {
-        scopedView.destroy();
-        (editorWrapper as HTMLElement).remove();
-        bookView.dom.style.display = "";
-      },
-    };
-  },
-});
+    let selection: Selection;
+    if (this.pendingSelection) {
+      selection = TextSelection.create(
+        doc,
+        this.pendingSelection.anchor,
+        this.pendingSelection.head,
+      );
+      this.pendingSelection = null;
+    } else {
+      selection = Selection.atStart(doc);
+    }
 
-export function chapterStart(doc: Node, targetIndex: number): number {
+    this.scopedView.updateState(
+      EditorState.create({
+        doc,
+        selection,
+        plugins: this.scopedView.state.plugins,
+      }),
+    );
+  }
+
+  destroy() {
+    this.scopedView.destroy();
+    (this.editorWrapper as HTMLElement).remove();
+    this.editorView.dom.style.display = "";
+  }
+}
+
+export function chapterStart(doc: Node, targetIndex: number) {
   let result = -1;
   doc.forEach((_child, offset, index) => {
     if (index === targetIndex) result = offset;
@@ -131,11 +137,11 @@ export function chapterStart(doc: Node, targetIndex: number): number {
   return result;
 }
 
-function buildScopedDoc(fullChapter: Node): Node {
+function buildScopedDoc(fullChapter: Node) {
   return bookSchema.node("doc", null, fullChapter);
 }
 
-function buildScopedState(fullChapter: Node): EditorState {
+function buildScopedState(fullChapter: Node) {
   return EditorState.create({
     doc: buildScopedDoc(fullChapter),
     plugins: [keymap(baseKeymap)],
