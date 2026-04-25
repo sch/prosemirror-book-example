@@ -6,7 +6,6 @@ import { StepMap } from "prosemirror-transform";
 import { keymap } from "prosemirror-keymap";
 import { baseKeymap } from "prosemirror-commands";
 
-
 export const chapterKey = new PluginKey<number>("chapter");
 
 // Renders a single chapter in a scoped EditorView. The book view's DOM is

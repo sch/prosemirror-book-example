@@ -10,18 +10,21 @@ const editorEl = document.getElementById("editor")!;
 const doc = DOMParser.fromSchema(bookSchema).parse(editorEl);
 editorEl.textContent = "";
 
-const toggleToc = document.getElementById("toggle-toc") as HTMLInputElement;
-const toggleChapter = document.getElementById("toggle-chapter") as HTMLInputElement;
+const contentsCheckbox = getInputById("toggle-toc");
+const chapterCheckbox = getInputById("toggle-chapter");
 
-let tocEnabled = toggleToc.checked;
-let chapterEnabled = toggleChapter.checked;
+let tocEnabled = contentsCheckbox.checked;
+let chapterEnabled = chapterCheckbox.checked;
 
-function buildPlugins(): Plugin[] {
-  const plugins: Plugin[] = [];
-  if (chapterEnabled) plugins.push(chapterPlugin);
-  if (tocEnabled) plugins.push(tableOfContentsPlugin);
-  return plugins;
-}
+contentsCheckbox.addEventListener("change", function () {
+  tocEnabled = contentsCheckbox.checked;
+  reconfigure();
+});
+
+chapterCheckbox.addEventListener("change", function () {
+  chapterEnabled = chapterCheckbox.checked;
+  reconfigure();
+});
 
 const view = new EditorView(editorEl, {
   state: EditorState.create({ doc, plugins: buildPlugins() }),
@@ -31,12 +34,16 @@ function reconfigure(): void {
   view.updateState(view.state.reconfigure({ plugins: buildPlugins() }));
 }
 
-toggleToc.addEventListener("change", function () {
-  tocEnabled = toggleToc.checked;
-  reconfigure();
-});
+function buildPlugins(): Plugin[] {
+  const plugins: Plugin[] = [];
+  if (chapterEnabled) plugins.push(chapterPlugin);
+  if (tocEnabled) plugins.push(tableOfContentsPlugin);
+  return plugins;
+}
 
-toggleChapter.addEventListener("change", function () {
-  chapterEnabled = toggleChapter.checked;
-  reconfigure();
-});
+function getInputById(id: string): HTMLInputElement {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(id + " not present in the dom");
+  if (!(el instanceof HTMLInputElement)) throw new Error(id + " is not an input");
+  return el;
+}
