@@ -6,8 +6,6 @@ import { StepMap } from "prosemirror-transform";
 import { bookSchema } from "./schema";
 import { chapterKey, chapterStart } from "./chapter-plugin";
 
-export const tableOfContentsKey = new PluginKey("tableOfContents");
-
 // Editable flat list of chapter headings. Same dispatch bridge pattern as the
 // chapter plugin, but the offset calculation is per-heading (each heading sits
 // at a different position in the full doc). Selection changes drive chapter
