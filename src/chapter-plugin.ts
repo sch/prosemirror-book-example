@@ -5,7 +5,7 @@ import { EditorView } from "prosemirror-view";
 import { StepMap } from "prosemirror-transform";
 import { keymap } from "prosemirror-keymap";
 import { baseKeymap } from "prosemirror-commands";
-import { bookSchema } from "./schema";
+
 
 export const chapterKey = new PluginKey<number>("chapter");
 
@@ -52,7 +52,7 @@ class ChapterView implements PluginView {
     // TextSelection.create
     this.scopedView = new EditorView(contentDOM!, {
       state: EditorState.create({
-        doc: bookSchema.nodes.doc.create(null, chapter),
+        doc: chapter,
         plugins: [keymap(baseKeymap)],
       }),
       dispatchTransaction: (tr) => {
@@ -64,7 +64,7 @@ class ChapterView implements PluginView {
         this.pendingSelection = tr.selection;
 
         const idx = chapterKey.getState(this.editorView.state)!;
-        const offset = chapterStart(this.editorView.state.doc, idx);
+        const offset = chapterStart(this.editorView.state.doc, idx) + 1;
 
         const outerTr = this.editorView.state.tr;
         for (const step of tr.steps) {
@@ -96,20 +96,19 @@ class ChapterView implements PluginView {
     if (oldIndex === newIndex && bookView.state.doc === prevState.doc) return;
 
     const chapter = bookView.state.doc.child(newIndex);
-    const doc = bookSchema.nodes.doc.create(null, chapter);
 
     let selection: Selection;
     if (this.pendingSelection) {
       const { anchor, head } = this.pendingSelection;
-      selection = TextSelection.create(doc, anchor, head);
+      selection = TextSelection.create(chapter, anchor, head);
       this.pendingSelection = null;
     } else {
-      selection = Selection.atStart(doc);
+      selection = Selection.atStart(chapter);
     }
 
     this.scopedView.updateState(
       EditorState.create({
-        doc,
+        doc: chapter,
         selection,
         plugins: this.scopedView.state.plugins,
       }),
