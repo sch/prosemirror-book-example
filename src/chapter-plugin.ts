@@ -13,39 +13,14 @@ import { keymap } from "prosemirror-keymap";
 import { baseKeymap } from "prosemirror-commands";
 import { bookSchema } from "./schema";
 
-// ── Shared helpers ────────────────────────────────────────────────
-
 export const chapterKey = new PluginKey<number>("chapter");
-
-export function chapterStart(doc: Node, targetIndex: number): number {
-  let result = -1;
-  doc.forEach((_child, offset, index) => {
-    if (index === targetIndex) result = offset;
-  });
-  if (result === -1) throw new Error(`No chapter at index ${targetIndex}`);
-  return result;
-}
-
-function buildScopedDoc(fullChapter: Node): Node {
-  return bookSchema.node("doc", null, fullChapter);
-}
-
-function buildScopedState(fullChapter: Node): EditorState {
-  return EditorState.create({
-    doc: buildScopedDoc(fullChapter),
-    plugins: [keymap(baseKeymap)],
-  });
-}
 
 const renderSpec = DOMSerializer.renderSpec.bind(null, document);
 
-// ── Chapter plugin ────────────────────────────────────────────────
-// Owns the active chapter index as plugin state, and manages the
-// scoped chapter EditorView. The scoped view renders a single
-// chapter; the book view's own DOM is hidden while this plugin is
-// active. The TOC plugin reads and writes the active index through
-// chapterKey.
-
+// Renders a single chapter in a scoped EditorView. The book view's DOM is
+// hidden; this view is the lens. Edits are remapped to full-doc coordinates via
+// a uniform offset (chapterStart). The TOC plugin drives chapter switching
+// through chapterKey
 export function chapterPlugin(): Plugin<number> {
   return new Plugin<number>({
     key: chapterKey,
@@ -59,9 +34,8 @@ export function chapterPlugin(): Plugin<number> {
       },
     },
     view(bookView) {
-      // Create a wrapper for the scoped editor and insert it after
-      // the book view's mount. The book view's DOM is hidden while
-      // this plugin is active.
+      // The book view's DOM is hidden. This wrapper holds the scoped view that
+      // actually renders
       const mount = bookView.dom.parentNode! as HTMLElement;
 
       const { dom: editorWrapper, contentDOM } = renderSpec([
@@ -76,8 +50,9 @@ export function chapterPlugin(): Plugin<number> {
       const activeIndex = chapterKey.getState(bookView.state)!;
       const chapter = bookView.state.doc.child(activeIndex);
 
-      // Stashed from dispatchTransaction so update() can restore
-      // the cursor after rebuilding the scoped state.
+      // Selection can't survive a state rebuild (ResolvedPos is bound to a
+      // specific doc). Stash raw positions here, recreate in update() via
+      // TextSelection.create
       let pendingSelection: Selection | null = null;
 
       const scopedView = new EditorView(contentDOM!, {
@@ -118,14 +93,19 @@ export function chapterPlugin(): Plugin<number> {
           const oldIndex = chapterKey.getState(prevState);
           if (oldIndex === undefined) return;
 
-          if (oldIndex === newIndex && bookView.state.doc === prevState.doc) return;
+          if (oldIndex === newIndex && bookView.state.doc === prevState.doc)
+            return;
 
           const chapter = bookView.state.doc.child(newIndex);
           const doc = buildScopedDoc(chapter);
 
           let selection: Selection;
           if (pendingSelection) {
-            selection = TextSelection.create(doc, pendingSelection.anchor, pendingSelection.head);
+            selection = TextSelection.create(
+              doc,
+              pendingSelection.anchor,
+              pendingSelection.head,
+            );
             pendingSelection = null;
           } else {
             selection = Selection.atStart(doc);
@@ -146,5 +126,25 @@ export function chapterPlugin(): Plugin<number> {
         },
       };
     },
+  });
+}
+
+export function chapterStart(doc: Node, targetIndex: number): number {
+  let result = -1;
+  doc.forEach((_child, offset, index) => {
+    if (index === targetIndex) result = offset;
+  });
+  if (result === -1) throw new Error(`No chapter at index ${targetIndex}`);
+  return result;
+}
+
+function buildScopedDoc(fullChapter: Node): Node {
+  return bookSchema.node("doc", null, fullChapter);
+}
+
+function buildScopedState(fullChapter: Node): EditorState {
+  return EditorState.create({
+    doc: buildScopedDoc(fullChapter),
+    plugins: [keymap(baseKeymap)],
   });
 }

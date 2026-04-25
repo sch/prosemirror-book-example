@@ -14,8 +14,6 @@ import { baseKeymap } from "prosemirror-commands";
 import { bookSchema } from "./schema";
 import { chapterKey, chapterStart } from "./chapter-plugin";
 
-// ── Helpers ──────────────────────────────────────────────────────
-
 function buildTocDoc(fullDoc: Node): Node {
   const headings: Node[] = [];
   fullDoc.forEach(function (chapter) {
@@ -40,16 +38,22 @@ function tocHeadingPos(tocDoc: Node, index: number): number {
   return pos;
 }
 
-// ── Table of contents plugin ─────────────────────────────────────
-// Manages the table-of-contents EditorView. Renders an editable
-// flat list of chapter headings into the provided sidebar element.
-// Reads and writes the active chapter index owned by chapterPlugin
-// via chapterKey.
+function headingsUnchanged(oldDoc: Node, newDoc: Node): boolean {
+  if (oldDoc.childCount !== newDoc.childCount) return false;
+  for (let i = 0; i < oldDoc.childCount; i++) {
+    if (oldDoc.child(i).firstChild !== newDoc.child(i).firstChild) return false;
+  }
+  return true;
+}
 
 export const tableOfContentsKey = new PluginKey("tableOfContents");
 
 const renderSpec = DOMSerializer.renderSpec.bind(null, document);
 
+// Editable flat list of chapter headings. Same dispatch bridge
+// pattern as the chapter plugin, but the offset calculation is
+// per-heading (each heading sits at a different position in the
+// full doc). Selection changes drive chapter switching via chapterKey
 export function tableOfContentsPlugin(): Plugin {
   return new Plugin({
     key: tableOfContentsKey,
@@ -87,7 +91,9 @@ export function tableOfContentsPlugin(): Plugin {
               const headingIndex = $head.index(0);
               const currentIndex = chapterKey.getState(bookView.state) ?? 0;
               if (headingIndex !== currentIndex) {
-                bookView.dispatch(bookView.state.tr.setMeta(chapterKey, headingIndex));
+                bookView.dispatch(
+                  bookView.state.tr.setMeta(chapterKey, headingIndex),
+                );
               }
             }
 
@@ -134,11 +140,26 @@ export function tableOfContentsPlugin(): Plugin {
             return;
           }
 
+          // If no heading node changed (e.g. user typed in a chapter body),
+          // skip the rebuild. But if pendingSelection is set, the TOC itself
+          // initiated the edit and needs its cursor back
+          if (
+            !pendingSelection &&
+            headingsUnchanged(prevState.doc, bookView.state.doc)
+          ) {
+            highlightActive();
+            return;
+          }
+
           const doc = buildTocDoc(bookView.state.doc);
 
           let selection: Selection;
           if (pendingSelection) {
-            selection = TextSelection.create(doc, pendingSelection.anchor, pendingSelection.head);
+            selection = TextSelection.create(
+              doc,
+              pendingSelection.anchor,
+              pendingSelection.head,
+            );
             pendingSelection = null;
           } else {
             selection = Selection.atStart(doc);
