@@ -1,4 +1,4 @@
-import { DOMSerializer, Node } from "prosemirror-model";
+import { DOMSerializer, Node, type DOMOutputSpec } from "prosemirror-model";
 import { EditorState, Plugin, PluginKey, Selection, TextSelection } from "prosemirror-state";
 import type { PluginView } from "prosemirror-state";
 import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
@@ -23,21 +23,18 @@ class TableOfContentsView implements PluginView {
   private activeIndex: number;
   private pendingSelection: Selection | null = null;
 
+  private spec: DOMOutputSpec = ["nav", ["h2", "Table of Contents"], ["div", 0]];
+
   constructor(private editorView: EditorView) {
     const mount = editorView.dom.parentNode!;
-
-    const { dom: sidebar, contentDOM } = DOMSerializer.renderSpec(document, [
-      "div",
-      { id: "toc" },
-      ["h2", "Table of Contents"],
-      ["div", 0],
-    ]);
+    const { dom: sidebar, contentDOM } = DOMSerializer.renderSpec(document, this.spec);
     this.sidebar = sidebar as HTMLElement;
     mount.parentNode!.insertBefore(sidebar, mount);
+    const place = { mount: contentDOM! };
 
     this.activeIndex = chapterKey.getState(editorView.state) ?? 0;
 
-    this.tocView = new EditorView(contentDOM!, {
+    this.tocView = new EditorView(place, {
       state: EditorState.create({
         doc: buildTocDoc(editorView.state.doc),
       }),

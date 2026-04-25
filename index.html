@@ -22,7 +22,7 @@
         height: 100vh;
       }
 
-      body:has(#toc) {
+      body:has(nav) {
         grid-template-columns: 260px 1fr;
       }
 
@@ -39,14 +39,14 @@
         overflow-y: auto;
       }
 
-      #toc {
+      nav {
         border-right: 1px solid #ccc;
         padding: 16px;
         overflow-y: auto;
         background: #f8f8f8;
       }
 
-      #toc h2 {
+      nav h2 {
         font-size: 14px;
         text-transform: uppercase;
         letter-spacing: 0.05em;
@@ -54,14 +54,14 @@
         margin-bottom: 12px;
       }
 
-      #toc .ProseMirror {
+      nav .ProseMirror {
         border: none;
         border-radius: 0;
         padding: 0;
         min-height: auto;
       }
 
-      #toc .ProseMirror h1 {
+      nav .ProseMirror h1 {
         font-size: 14px;
         font-weight: normal;
         padding: 8px 12px;
@@ -71,11 +71,11 @@
         line-height: 1.4;
       }
 
-      #toc .ProseMirror h1:hover {
+      nav .ProseMirror h1:hover {
         background: #e8e8e8;
       }
-      #toc .ProseMirror h1.active,
-      #toc .ProseMirror h1.active:hover {
+      nav .ProseMirror h1.active,
+      nav .ProseMirror h1.active:hover {
         background: #d0e0ff;
       }
 
@@ -140,24 +140,24 @@
           border-bottom-color: #444;
         }
 
-        #toc {
+        nav {
           background: #202020;
           border-right-color: #444;
         }
 
-        #toc h2 {
+        nav h2 {
           color: #999;
         }
 
-        #toc .ProseMirror h1:hover {
+        nav .ProseMirror h1:hover {
           background: #333;
         }
 
-        #toc .ProseMirror h1.active {
+        nav .ProseMirror h1.active {
           background: #1a3a5c;
         }
 
-        #toc .ProseMirror h1.active:hover {
+        nav .ProseMirror h1.active:hover {
           background: #1a3a5c;
         }
 
