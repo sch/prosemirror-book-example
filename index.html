@@ -179,6 +179,27 @@
     </div>
     <div id="editor">
       <section>
+        <h1>Scoped Views Into a Shared Document</h1>
+        <p>
+          This example builds a book editor where the underlying document contains multiple
+          chapters, but the user doesn't always see or edit the full thing. Two plugins provide
+          narrower views into the same document: a table of contents sidebar that shows just the
+          chapter headings, and a chapter focus mode that shows one chapter at a time.
+        </p>
+        <p>
+          Both views are editable. Typing in the table of contents renames a chapter. Typing in the
+          focused chapter edits its content. Every edit flows back to the full book document through
+          a custom
+          <code>dispatchTransaction</code> that remaps steps from scoped coordinates to
+          full-document coordinates.
+        </p>
+        <p>
+          The two plugins are independent and can be toggled on or off with the checkboxes above.
+          When chapter focus is off, the full document is visible and the table of contents tracks
+          whichever chapter contains the cursor.
+        </p>
+      </section>
+      <section>
         <h1>One Schema With Two Top Nodes</h1>
         <p>
           A naive approach to sub-document editing is to define a separate schema for each view.
@@ -190,8 +211,8 @@
         </p>
         <p>
           This example uses a single <code>bookSchema</code> with two top-level node types. Both
-          views share the same <code>heading</code> type, so steps from the TOC view can be remapped
-          and applied to the full document directly.
+          views share the same <code>heading</code> type, so steps from the table of contents view
+          can be remapped and applied to the full document directly.
         </p>
         <pre>
 doc:     { content: "chapter+" }
@@ -206,7 +227,7 @@ heading: { content: "text*", isolating: true }</pre
         </p>
       </section>
       <section>
-        <h1>The Dispatch Bridge</h1>
+        <h1>Highjacking dispatchTransaction</h1>
         <p>
           Neither scoped view owns its state transitions. Each one has a custom
           <code>dispatchTransaction</code> that intercepts every transaction, remaps its steps into
@@ -221,17 +242,17 @@ heading: { content: "text*", isolating: true }</pre
           translation.
         </p>
         <p>
-          The TOC view is more interesting. Each heading lives at a different position in the full
-          document, so the offset is per-heading. The bridge resolves which heading a step falls in,
-          computes that heading's offset, and remaps with it. Same mechanism, but the mapping
-          function is no longer trivial.
+          The table of contents view is more interesting. Each heading lives at a different position
+          in the full document, so the offset is per-heading. The bridge resolves which heading a
+          step falls in, computes that heading's offset, and remaps with it. Same mechanism, but the
+          mapping function is no longer trivial.
         </p>
       </section>
       <section>
         <h1>Per-Heading Offsets</h1>
         <p>
-          For the chapter view, one number is enough. For the TOC, we need to figure out which
-          heading a step belongs to and compute its specific offset. The math:
+          For the chapter view, one number is enough. For the table of contents, we need to figure
+          out which heading a step belongs to and compute its specific offset. The math:
         </p>
         <pre>
 const fullPos = chapterStart(fullDoc, hIndex) + 1
@@ -241,13 +262,14 @@ const offset = fullPos - tocPos</pre
         <p>
           The <code>+1</code> enters the chapter node to reach its first child (the heading).
           <code>tocHeadingPos</code> sums up preceding headings' <code>nodeSize</code>s in the flat
-          TOC document. The difference between these two positions is the offset for
+          table of contents document. The difference between these two positions is the offset for
           <code>StepMap.offset</code>.
         </p>
         <p>
           This is stable across multi-step transactions because insertions shift both documents
           equally. But it does require resolving the step's <code>from</code> position against the
-          old TOC doc to find the heading index. There might be a cleaner way to do this.
+          old table of contents doc to find the heading index. There might be a cleaner way to do
+          this.
         </p>
       </section>
       <section>
