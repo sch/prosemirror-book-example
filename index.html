@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#fafafa" />
     <title>ProseMirror Scoped View</title>
     <style>
       * {
@@ -79,8 +80,7 @@
         background: #d0e0ff;
       }
 
-      #editor > .ProseMirror,
-      #editor-wrapper > div {
+      #editor > .ProseMirror {
         max-width: 700px;
         margin: 0 auto;
       }
@@ -91,10 +91,6 @@
         padding: 16px 20px;
         min-height: 300px;
         outline: none;
-      }
-
-      .ProseMirror section {
-        /* chapter node renders as <section> */
       }
 
       .ProseMirror h1 {
@@ -129,6 +125,7 @@
         font-size: 0.85em;
         line-height: 1.5;
       }
+
       @media (prefers-color-scheme: dark) {
         body {
           background: #1a1a1a;
