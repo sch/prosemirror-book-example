@@ -241,12 +241,12 @@ heading: { content: "text*", isolating: true }</pre
         </p>
       </section>
       <section>
-        <h1>Highjacking dispatchTransaction</h1>
+        <h1>Hijacking dispatchTransaction</h1>
         <p>
           Neither scoped view owns its state transitions. Each one has a custom
           <code>dispatchTransaction</code> that intercepts every transaction, remaps its steps into
-          full-document coordinates, and dispatches the result on the book view. The scoped view is
-          a lens. It renders a slice of the document and translates edits back.
+          full-document coordinates, and dispatches the result on the parent book view. The scoped
+          view is a lens. It renders a slice of the document and translates edits back.
         </p>
         <p>
           This is the same pattern as the footnote example in the ProseMirror docs. The chapter view
